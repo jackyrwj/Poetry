@@ -21,3 +21,5 @@ AIConfig.plist
 
 # Images (screenshots)
 *.png
+!Poetry/Assets.xcassets/**/*.png
+Poetry/Assets.xcassets/.imageset/
