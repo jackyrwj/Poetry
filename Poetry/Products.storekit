@@ -1,0 +1,154 @@
+{
+  "identifier" : "F1A2B3C4-D5E6-F708-1234-ABCDEF012345",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "198",
+      "familyShareable" : false,
+      "internalID" : "LIFETIME001",
+      "localizations" : [
+        {
+          "description" : "一次購買，永久解鎖所有功能",
+          "displayName" : "雅集・終身",
+          "locale" : "zh_CN"
+        }
+      ],
+      "productID" : "com.raowenjie.Poetry.lifetime",
+      "referenceName" : "雅集・終身",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6777856347",
+    "_developerTeamID" : "9G5964XAXT",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "zh_CN",
+    "_storefront" : "CHN",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21610293",
+      "localizations" : [
+
+      ],
+      "name" : "雅集",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "18",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "MONTHLY001",
+          "introductoryOffer" : {
+            "displayPrice" : "6",
+            "internalID" : "MONTHLY_INTRO",
+            "paymentMode" : "payAsYouGo",
+            "subscriptionPeriod" : "P1M",
+            "numberOfPeriods" : 1
+          },
+          "localizations" : [
+            {
+              "description" : "不限生成、全部詩式字體朱印紙面",
+              "displayName" : "雅集・月度",
+              "locale" : "zh_CN"
+            }
+          ],
+          "productID" : "com.raowenjie.Poetry.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "雅集・月度",
+          "subscriptionGroupID" : "21610293",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "98",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "YEARLY001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "不限生成、全部詩式字體朱印紙面，約 ¥8/月",
+              "displayName" : "雅集・年度",
+              "locale" : "zh_CN"
+            }
+          ],
+          "productID" : "com.raowenjie.Poetry.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "雅集・年度",
+          "subscriptionGroupID" : "21610293",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

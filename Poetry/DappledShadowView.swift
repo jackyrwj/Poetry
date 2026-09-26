@@ -15,20 +15,20 @@ enum ShadowStyle: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .morning: return "晨光"
-        case .bamboo:  return "竹影"
-        case .dappled: return "斑驳"
-        case .xuanPaper: return "宣紙"
-        case .none:    return "无"
+        case .morning: return AppLanguage.copy("晨光", "Morning light")
+        case .bamboo:  return AppLanguage.copy("竹影", "Bamboo shadow")
+        case .dappled: return AppLanguage.copy("斑驳", "Dappled light")
+        case .xuanPaper: return AppLanguage.copy("宣紙", "Xuan paper")
+        case .none:    return AppLanguage.copy("无", "None")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .morning: return "窗边斜照"
-        case .bamboo:  return "疏影横斜"
-        case .dappled: return "树影婆娑"
-        case .xuanPaper: return "紙纖微明"
+        case .morning: return AppLanguage.copy("窗边斜照", "Light by the window")
+        case .bamboo:  return AppLanguage.copy("疏影横斜", "Slender crossing shadows")
+        case .dappled: return AppLanguage.copy("树影婆娑", "Moving leaf shadows")
+        case .xuanPaper: return AppLanguage.copy("紙纖微明", "Subtle paper fibers")
         case .none:    return ""
         }
     }
@@ -54,6 +54,10 @@ enum ShadowStyle: String, CaseIterable, Identifiable {
 enum PoemBackground: String, CaseIterable, Identifiable {
     case none       = "bg_none"
     case boat       = "bg_boat"
+    case rain       = "bg_rain"
+    case autumn     = "bg_autumn"
+    case frontier   = "bg_frontier"
+    case lamp       = "bg_lamp"
     case waterfall  = "bg_waterfall"
     case plum       = "bg_plum"
     case bamboo     = "bg_bamboo"
@@ -63,6 +67,8 @@ enum PoemBackground: String, CaseIterable, Identifiable {
     case pavilion   = "bg_pavilion"
     case peaks      = "bg_peaks"
     case willow     = "bg_willow"
+    case spring     = "bg_spring"
+    case snow       = "bg_snow"
 
     var id: String { rawValue }
     static let storageKey = "poem_background"
@@ -71,17 +77,23 @@ enum PoemBackground: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .none:      return "無"
-        case .boat:      return "渡舟"
-        case .waterfall: return "山瀑"
-        case .plum:      return "梅花"
-        case .bamboo:    return "翠竹"
-        case .moon:      return "月夜"
-        case .lotus:     return "荷花"
-        case .bridge:    return "拱橋"
-        case .pavilion:  return "山亭"
-        case .peaks:     return "雲峰"
-        case .willow:    return "垂柳"
+        case .none:      return AppLanguage.copy("無", "None")
+        case .boat:      return AppLanguage.copy("渡舟", "Ferry boat")
+        case .rain:      return AppLanguage.copy("煙雨", "Misty rain")
+        case .autumn:    return AppLanguage.copy("秋色", "Autumn")
+        case .frontier:  return AppLanguage.copy("塞外", "Frontier")
+        case .lamp:      return AppLanguage.copy("孤燈", "Lone lamp")
+        case .waterfall: return AppLanguage.copy("山瀑", "Waterfall")
+        case .plum:      return AppLanguage.copy("梅花", "Plum blossom")
+        case .bamboo:    return AppLanguage.copy("翠竹", "Bamboo")
+        case .moon:      return AppLanguage.copy("月夜", "Moonlit night")
+        case .lotus:     return AppLanguage.copy("荷花", "Lotus")
+        case .bridge:    return AppLanguage.copy("拱橋", "Arch bridge")
+        case .pavilion:  return AppLanguage.copy("山亭", "Pavilion")
+        case .peaks:     return AppLanguage.copy("雲峰", "Cloud peaks")
+        case .willow:    return AppLanguage.copy("垂柳", "Willow")
+        case .spring:    return AppLanguage.copy("春花", "Spring blossom")
+        case .snow:      return AppLanguage.copy("寒雪", "Winter snow")
         }
     }
 
@@ -93,9 +105,37 @@ enum PoemBackground: String, CaseIterable, Identifiable {
         self == .none ? nil : "\(rawValue)_landscape"
     }
 
+    var isPremium: Bool {
+        switch self {
+        case .none, .boat, .waterfall, .plum:
+            return false
+        case .rain, .autumn, .frontier, .lamp, .bamboo, .moon, .lotus, .bridge, .pavilion, .peaks, .willow, .spring, .snow:
+            return true
+        }
+    }
+
     /// All image backgrounds (excluding .none)
     static var imageBackgrounds: [PoemBackground] {
         allCases.filter { $0 != .none }
+    }
+
+    static var freeImageBackgrounds: [PoemBackground] {
+        imageBackgrounds.filter { !$0.isPremium }
+    }
+
+    static func suggested(for text: String) -> PoemBackground {
+        let matches: [(String, PoemBackground)] = [
+            ("玉门", .frontier), ("楼兰", .frontier), ("关山", .frontier),
+            ("边", .frontier), ("塞", .frontier), ("戍", .frontier), ("胡", .frontier),
+            ("雨", .rain), ("霖", .rain), ("潇潇", .rain),
+            ("秋", .autumn), ("枫", .autumn), ("霜", .autumn), ("黄叶", .autumn), ("梧桐", .autumn),
+            ("灯", .lamp), ("烛", .lamp), ("孤灯", .lamp), ("灯火", .lamp), ("渔火", .lamp),
+            ("月", .moon), ("梅", .plum), ("竹", .bamboo), ("莲", .lotus),
+            ("荷", .lotus), ("雪", .snow), ("瀑", .waterfall), ("柳", .willow),
+            ("舟", .boat), ("江", .boat), ("山", .peaks), ("桥", .bridge),
+            ("亭", .pavilion), ("春", .spring), ("花", .spring)
+        ]
+        return matches.first(where: { text.contains($0.0) })?.1 ?? defaultBackground
     }
 
     static func migrateDefaultToBoatIfNeeded(selectedBgRaw: inout String) {

@@ -87,11 +87,19 @@ struct OnboardingView: View {
                             onFinish()
                         }
                     } label: {
-                        Text(currentPage < totalPages - 1 ? "續" : "始")
-                            .font(.system(size: 15, weight: .medium, design: .serif))
+                        Text(AppLanguage.isEnglish
+                            ? (currentPage < totalPages - 1 ? "Continue" : "Get started")
+                            : (currentPage < totalPages - 1 ? "續" : "始"))
+                            .font(.system(size: AppLanguage.isEnglish ? 12 : 15, weight: .medium, design: .serif))
                             .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.cinnabar))
+                            .frame(width: AppLanguage.isEnglish ? 92 : 44, height: 44)
+                            .background {
+                                if AppLanguage.isEnglish {
+                                    Capsule().fill(Color.cinnabar)
+                                } else {
+                                    Circle().fill(Color.cinnabar)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -338,6 +346,7 @@ private struct OnboardingPoemPage: View {
 
 private struct OnboardingSealPage: View {
     @AppStorage("sealName") private var sealName = ""
+    @AppStorage(NameTransliterator.overrideStorageKey) private var transliterationOverride = ""
     @State private var editingName = ""
     @State private var aiSuggestions: [String] = []
     @State private var isLoadingAI = false
@@ -349,12 +358,18 @@ private struct OnboardingSealPage: View {
     /// Pre-built default names shown on first load
     private let defaultSuggestions = ["聽松居士", "半山散人", "夜雨書生"]
 
+    private var fullName: String {
+        editingName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var previewName: String {
-        let trimmed = editingName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(trimmed.prefix(4))
+        String(fullName.prefix(4))
     }
 
     private var sealChars: [String] {
+        if let glyphs = NameTransliterator.glyphs(for: fullName, storedOverride: transliterationOverride) {
+            return glyphs.map(\.value)
+        }
         let chars = Array(simplifiedSealText(previewName)).map(String.init)
         return Array(chars.prefix(4))
     }
@@ -374,12 +389,12 @@ private struct OnboardingSealPage: View {
             VStack(spacing: 0) {
                 // Title
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("客官貴姓")
+                    Text(AppLanguage.copy("客官貴姓", "What should your seal say?"))
                         .font(.system(size: 28, weight: .light, design: .serif))
-                    Text("留個名號，好為你刻一方印")
+                    Text(AppLanguage.copy("留個名號，好為你刻一方印", "Choose a name or pen name for your personal seal."))
                         .font(.system(size: 14, design: .serif))
                         .foregroundStyle(Color.mutedInk)
-                        .tracking(1)
+                        .tracking(AppLanguage.isEnglish ? 0 : 1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 100)
@@ -395,7 +410,7 @@ private struct OnboardingSealPage: View {
                 VStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
-                            TextField("", text: $editingName, prompt: Text("姓名或雅號")
+                            TextField("", text: $editingName, prompt: Text(AppLanguage.copy("姓名或雅號", "Name or pen name"))
                                 .font(.system(size: 15, design: .serif))
                                 .foregroundStyle(Color.mutedInk.opacity(0.4)))
                                 .font(.system(size: 16, design: .serif))
@@ -431,6 +446,7 @@ private struct OnboardingSealPage: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isLoadingAI)
+                            .accessibilityLabel(AppLanguage.copy("生成雅號", "Suggest a pen name"))
                         }
 
                         Rectangle()
@@ -438,6 +454,13 @@ private struct OnboardingSealPage: View {
                             .frame(height: 0.5)
                     }
                     .padding(.horizontal, 30)
+
+                    if !fullName.isEmpty {
+                        SealTransliterationChips(name: fullName)
+                            .padding(.top, 10)
+                            .padding(.horizontal, 30)
+                            .transition(.opacity.combined(with: .offset(y: 6)))
+                    }
 
                     // Suggestion pills
                     if !aiSuggestions.isEmpty {
@@ -556,7 +579,8 @@ private struct OnboardingSealPage: View {
 
     private func saveName() {
         let trimmed = editingName.trimmingCharacters(in: .whitespacesAndNewlines)
-        sealName = String(trimmed.prefix(4))
+        let hasCJK = trimmed.contains { $0.isCJK }
+        sealName = String(trimmed.prefix(hasCJK ? 4 : 24))
     }
 
     private func generatePenNames() {
@@ -616,7 +640,7 @@ private struct OnboardingSharePage: View {
 
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
-                    Text("分享")
+                    Text(AppLanguage.copy("分享", "Share"))
                         .font(.system(size: 28, weight: .light, design: .serif))
                         .foregroundStyle(Color.ink)
                     Spacer()
@@ -646,8 +670,15 @@ private struct OnboardingSharePage: View {
                                         .frame(width: 52, height: 72)
 
                                     if isActive {
-                                        Text("擇")
-                                            .font(.system(size: 10, weight: .medium, design: .serif))
+                                        Group {
+                                            if AppLanguage.isEnglish {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 9, weight: .bold))
+                                            } else {
+                                                Text("擇")
+                                                    .font(.system(size: 10, weight: .medium, design: .serif))
+                                            }
+                                        }
                                             .foregroundStyle(.white)
                                             .frame(width: 18, height: 18)
                                             .background(Circle().fill(Color.cinnabar))
@@ -692,10 +723,10 @@ private struct OnboardingSharePage: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 5)
 
-                    Text("換一張底紙，詩便有了不同氣息")
+                    Text(AppLanguage.copy("換一張底紙，詩便有了不同氣息", "Change the paper to give your poem a different mood."))
                         .font(.system(size: 14, weight: .light, design: .serif))
                         .foregroundStyle(Color.mutedInk)
-                        .tracking(1)
+                        .tracking(AppLanguage.isEnglish ? 0 : 1)
                 }
                 .padding(.horizontal, 30)
                 .animation(.easeOut(duration: 0.4), value: currentBgIndex)

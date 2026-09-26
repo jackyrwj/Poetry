@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "poet_wang_zhihuan.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

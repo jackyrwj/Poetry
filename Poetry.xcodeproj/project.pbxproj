@@ -3,48 +3,110 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00DC6E60E773FA6676458F2B /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECFFFDE94EAEA267204DCC7 /* StoreManager.swift */; };
+		01D8128740A2C4FD8703C57D /* ClassicPoemTitle-en.json in Resources */ = {isa = PBXBuildFile; fileRef = C9C73057A8AA2B1B55459E97 /* ClassicPoemTitle-en.json */; };
+		0549E40EF09FE4C9B8446814 /* guqin_yangguan_sandie.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9628D38EBACAE00D0AB57325 /* guqin_yangguan_sandie.m4a */; };
+		05C10F5EA88CBDA1ED174631 /* ATTRIBUTION.md in Resources */ = {isa = PBXBuildFile; fileRef = 164170EF217B7D045BF98FC6 /* ATTRIBUTION.md */; };
+		11CC84A0F09B4779890A464F /* PoemMusicPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A16E1C415515282FF3A754 /* PoemMusicPlayer.swift */; };
+		195BEC16D6D930F582E4C06E /* ClassicPoem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC451B10B428A2F1989BC39 /* ClassicPoem.swift */; };
 		1DD57F4A995CD42029E8558B /* HuiwenMincho.otf in Resources */ = {isa = PBXBuildFile; fileRef = 0B5E1C7761EF91CFD11F58C7 /* HuiwenMincho.otf */; };
-		24177CBFA190254D7C90BAAF /* PoemComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015CB36912E6273007CEC813 /* PoemComposerView.swift */; };
+		24177CBFA190254D7C90BAAF /* PoetryDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015CB36912E6273007CEC813 /* PoetryDesignSystem.swift */; };
+		293F14FCF472DF103EE953B7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = E3649A4A8322DBBBD3EBDDEC /* InfoPlist.strings */; };
+		2BD9BEFD5CD208A4053E5DD9 /* PoetGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D5718A6538BE050FDF17F69 /* PoetGalleryView.swift */; };
+		30E651F799331555B618CEBC /* qiu_feng_ci.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 09FAFAB2AC93AA2BEAE6E3B4 /* qiu_feng_ci.m4a */; };
+		37F011121183F7A93EF41BB9 /* pingsha_luoyan.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 739DC39A4B4A9F8E156A1458 /* pingsha_luoyan.m4a */; };
+		3B85ED4598D24C64F18C2A84 /* TangShiThreeHundredLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986224FEE3E62C01D561DD0E /* TangShiThreeHundredLibrary.swift */; };
+		3C2D989C46169C6ED8547542 /* ClassicPoetryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9B4B6B26B2F75D6D84D819 /* ClassicPoetryView.swift */; };
+		3C31BF2EBC887A10D1BB132E /* SongCiThreeHundred.json in Resources */ = {isa = PBXBuildFile; fileRef = F9C3DF9D994F99E1647DBDF8 /* SongCiThreeHundred.json */; };
+		41D01F01E8516EFD0053645D /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 6219AE591884B9E04A73297E /* Products.storekit */; };
+		4BECA6E696CE8BEDEFCA0FB7 /* SpotlightGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD2F38AA54792DABF33C930 /* SpotlightGuide.swift */; };
 		4D04335B6FC9293844D726A6 /* PoetryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D0C31D37A622B5F5477405 /* PoetryApp.swift */; };
+		4DB48F7C4F5FBFC531519E42 /* WenYueGuTiFangSongTC.otf in Resources */ = {isa = PBXBuildFile; fileRef = 6859CCFEC92069C08354BD1F /* WenYueGuTiFangSongTC.otf */; };
+		577E4C177BB4F8FF570BC57E /* ClassicPoet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667846721A046919D41A479B /* ClassicPoet.swift */; };
+		5ED398FECB6CF03717D50DFF /* liu_shui.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 357EF1E8CDF2B9C5C7D31AD4 /* liu_shui.m4a */; };
+		6589AFB4A6B89708BFDF9EDA /* NameTransliterator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE5E8E17A2316466737D3E99 /* NameTransliterator.swift */; };
+		6AE96111958BA7282B5864E5 /* ClassicPoemTranslation-en.json in Resources */ = {isa = PBXBuildFile; fileRef = 48F2B781FE1CC7A124258630 /* ClassicPoemTranslation-en.json */; };
 		70C6C1E67BEB9EE0AE98C190 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F62C30408E552A0B41C6FF95 /* Assets.xcassets */; };
 		722BE2E663079DD3264F3BDB /* LXGWWenKaiLite-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CF022F287632A87217A8F61E /* LXGWWenKaiLite-Regular.ttf */; };
-		7A67A4D2936F4A5182B9074D /* FZXiaoZhuanTi.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4DFCE2C327D146D0A495D039 /* FZXiaoZhuanTi.ttf */; };
-		8E72B57C0A0B4D82960E1F42 /* WenYueGuTiFangSongTC.otf in Resources */ = {isa = PBXBuildFile; fileRef = 1D1E38FD32CB4EB39C996C5D /* WenYueGuTiFangSongTC.otf */; };
+		7A47340D4C087452E0BF4302 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 340A969988D0B51D67F65EF8 /* OnboardingView.swift */; };
+		96AF39A7E386C9861E9D12AB /* pei_lan.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 38169F15687762495105F54C /* pei_lan.m4a */; };
 		97E8970525BF6FA8F6A6D65E /* SourceHanSerifCN-ExtraLight.otf in Resources */ = {isa = PBXBuildFile; fileRef = D76D6A60A9F86F4B3285BEBE /* SourceHanSerifCN-ExtraLight.otf */; };
+		984BA36C36E8BE7439CB779E /* TangShiThreeHundred.json in Resources */ = {isa = PBXBuildFile; fileRef = F3A6F7D7D86B09B62834E0D3 /* TangShiThreeHundred.json */; };
 		99336E21A91B271726B0A7B5 /* MaShanZheng-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A990BA46481D255673C50AF6 /* MaShanZheng-Regular.ttf */; };
 		997B0EE91162EC7D83940461 /* PoemLocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01782132C37D6A1E1393C6B9 /* PoemLocationProvider.swift */; };
+		A21E34300F0DBA31CBC6D5C7 /* FZXiaoZhuanTi.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7B787452B0D5C00532F94190 /* FZXiaoZhuanTi.ttf */; };
 		B15D3CBF62A6D17DE550784E /* DappledShadowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52100786748C874758414C79 /* DappledShadowView.swift */; };
 		B5A95ED9D07DE734785ED137 /* AIConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */; };
-		C0A9F2E81E5D4B3C9A7F6012 /* SpotlightGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A9F2E71E5D4B3C9A7F6012 /* SpotlightGuide.swift */; };
+		CEAC62EC2C2F7B7F4C17EE9A /* ClassicPoetryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C474EAA6AC4964CC69890A52 /* ClassicPoetryClient.swift */; };
 		D48EDBAA8809DB7764E613A6 /* BailianPoetryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */; };
-		F1A2B3C4D5E6F7081234ABCD /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718ABCD1234 /* OnboardingView.swift */; };
+		DD1456093DEDFA8493BCAF70 /* ClassicPoemCommentary-en.json in Resources */ = {isa = PBXBuildFile; fileRef = D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */; };
+		E234CEAE43D5A0EE46A02AFC /* SongCiThreeHundredLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAD629E784D60189AE86D4E9 /* SongCiThreeHundredLibrary.swift */; };
+		F01D352FB7BF7815C95E67BE /* guqin_zuiyu_changwan.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 03F3F07B15514CD35C0C762C /* guqin_zuiyu_changwan.m4a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		015CB36912E6273007CEC813 /* PoemComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoemComposerView.swift; sourceTree = "<group>"; };
+		015CB36912E6273007CEC813 /* PoetryDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetryDesignSystem.swift; sourceTree = "<group>"; };
 		01782132C37D6A1E1393C6B9 /* PoemLocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoemLocationProvider.swift; sourceTree = "<group>"; };
+		03F3F07B15514CD35C0C762C /* guqin_zuiyu_changwan.m4a */ = {isa = PBXFileReference; path = guqin_zuiyu_changwan.m4a; sourceTree = "<group>"; };
+		09FAFAB2AC93AA2BEAE6E3B4 /* qiu_feng_ci.m4a */ = {isa = PBXFileReference; path = qiu_feng_ci.m4a; sourceTree = "<group>"; };
 		0B5E1C7761EF91CFD11F58C7 /* HuiwenMincho.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = HuiwenMincho.otf; sourceTree = "<group>"; };
-		1D1E38FD32CB4EB39C996C5D /* WenYueGuTiFangSongTC.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = WenYueGuTiFangSongTC.otf; sourceTree = "<group>"; };
-		4504E3EDE22DFD3867CA163A /* Poetry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Poetry.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		4DFCE2C327D146D0A495D039 /* FZXiaoZhuanTi.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FZXiaoZhuanTi.ttf; sourceTree = "<group>"; };
+		164170EF217B7D045BF98FC6 /* ATTRIBUTION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ATTRIBUTION.md; sourceTree = "<group>"; };
+		1BD2F38AA54792DABF33C930 /* SpotlightGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightGuide.swift; sourceTree = "<group>"; };
+		340A969988D0B51D67F65EF8 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		357EF1E8CDF2B9C5C7D31AD4 /* liu_shui.m4a */ = {isa = PBXFileReference; path = liu_shui.m4a; sourceTree = "<group>"; };
+		38169F15687762495105F54C /* pei_lan.m4a */ = {isa = PBXFileReference; path = pei_lan.m4a; sourceTree = "<group>"; };
+		3BD36889E72BE5CC87689B14 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		3D5718A6538BE050FDF17F69 /* PoetGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetGalleryView.swift; sourceTree = "<group>"; };
+		4504E3EDE22DFD3867CA163A /* Poetry.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Poetry.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		48F2B781FE1CC7A124258630 /* ClassicPoemTranslation-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemTranslation-en.json"; sourceTree = "<group>"; };
 		52100786748C874758414C79 /* DappledShadowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DappledShadowView.swift; sourceTree = "<group>"; };
+		6219AE591884B9E04A73297E /* Products.storekit */ = {isa = PBXFileReference; path = Products.storekit; sourceTree = "<group>"; };
+		667846721A046919D41A479B /* ClassicPoet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicPoet.swift; sourceTree = "<group>"; };
+		6859CCFEC92069C08354BD1F /* WenYueGuTiFangSongTC.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = WenYueGuTiFangSongTC.otf; sourceTree = "<group>"; };
 		69B925676B606F89E71000DE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718ABCD1234 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		739DC39A4B4A9F8E156A1458 /* pingsha_luoyan.m4a */ = {isa = PBXFileReference; path = pingsha_luoyan.m4a; sourceTree = "<group>"; };
+		7B787452B0D5C00532F94190 /* FZXiaoZhuanTi.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = FZXiaoZhuanTi.ttf; sourceTree = "<group>"; };
+		81A16E1C415515282FF3A754 /* PoemMusicPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoemMusicPlayer.swift; sourceTree = "<group>"; };
+		9628D38EBACAE00D0AB57325 /* guqin_yangguan_sandie.m4a */ = {isa = PBXFileReference; path = guqin_yangguan_sandie.m4a; sourceTree = "<group>"; };
+		986224FEE3E62C01D561DD0E /* TangShiThreeHundredLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TangShiThreeHundredLibrary.swift; sourceTree = "<group>"; };
 		A990BA46481D255673C50AF6 /* MaShanZheng-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "MaShanZheng-Regular.ttf"; sourceTree = "<group>"; };
-		C0A9F2E71E5D4B3C9A7F6012 /* SpotlightGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightGuide.swift; sourceTree = "<group>"; };
+		AAD629E784D60189AE86D4E9 /* SongCiThreeHundredLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongCiThreeHundredLibrary.swift; sourceTree = "<group>"; };
+		AE5E8E17A2316466737D3E99 /* NameTransliterator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameTransliterator.swift; sourceTree = "<group>"; };
+		C474EAA6AC4964CC69890A52 /* ClassicPoetryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicPoetryClient.swift; sourceTree = "<group>"; };
 		C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = AIConfig.plist; sourceTree = "<group>"; };
+		C9C73057A8AA2B1B55459E97 /* ClassicPoemTitle-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemTitle-en.json"; sourceTree = "<group>"; };
 		CF022F287632A87217A8F61E /* LXGWWenKaiLite-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "LXGWWenKaiLite-Regular.ttf"; sourceTree = "<group>"; };
+		D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemCommentary-en.json"; sourceTree = "<group>"; };
 		D76D6A60A9F86F4B3285BEBE /* SourceHanSerifCN-ExtraLight.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "SourceHanSerifCN-ExtraLight.otf"; sourceTree = "<group>"; };
+		DE9B4B6B26B2F75D6D84D819 /* ClassicPoetryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicPoetryView.swift; sourceTree = "<group>"; };
 		DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BailianPoetryClient.swift; sourceTree = "<group>"; };
 		E9D0C31D37A622B5F5477405 /* PoetryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetryApp.swift; sourceTree = "<group>"; };
+		EECFFFDE94EAEA267204DCC7 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
+		F3A6F7D7D86B09B62834E0D3 /* TangShiThreeHundred.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = TangShiThreeHundred.json; sourceTree = "<group>"; };
 		F62C30408E552A0B41C6FF95 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F9C3DF9D994F99E1647DBDF8 /* SongCiThreeHundred.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = SongCiThreeHundred.json; sourceTree = "<group>"; };
+		FAC451B10B428A2F1989BC39 /* ClassicPoem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicPoem.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		132B5DFB7E258F843E0B4B4D /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				164170EF217B7D045BF98FC6 /* ATTRIBUTION.md */,
+				9628D38EBACAE00D0AB57325 /* guqin_yangguan_sandie.m4a */,
+				03F3F07B15514CD35C0C762C /* guqin_zuiyu_changwan.m4a */,
+				357EF1E8CDF2B9C5C7D31AD4 /* liu_shui.m4a */,
+				38169F15687762495105F54C /* pei_lan.m4a */,
+				739DC39A4B4A9F8E156A1458 /* pingsha_luoyan.m4a */,
+				09FAFAB2AC93AA2BEAE6E3B4 /* qiu_feng_ci.m4a */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
 		387362BCCFB0FAC568BE7BEE /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -67,13 +129,31 @@
 				C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */,
 				F62C30408E552A0B41C6FF95 /* Assets.xcassets */,
 				DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */,
+				FAC451B10B428A2F1989BC39 /* ClassicPoem.swift */,
+				D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */,
+				C9C73057A8AA2B1B55459E97 /* ClassicPoemTitle-en.json */,
+				48F2B781FE1CC7A124258630 /* ClassicPoemTranslation-en.json */,
+				667846721A046919D41A479B /* ClassicPoet.swift */,
+				C474EAA6AC4964CC69890A52 /* ClassicPoetryClient.swift */,
+				DE9B4B6B26B2F75D6D84D819 /* ClassicPoetryView.swift */,
 				52100786748C874758414C79 /* DappledShadowView.swift */,
 				69B925676B606F89E71000DE /* Info.plist */,
-				A1B2C3D4E5F60718ABCD1234 /* OnboardingView.swift */,
-				015CB36912E6273007CEC813 /* PoemComposerView.swift */,
+				E3649A4A8322DBBBD3EBDDEC /* InfoPlist.strings */,
+				AE5E8E17A2316466737D3E99 /* NameTransliterator.swift */,
+				340A969988D0B51D67F65EF8 /* OnboardingView.swift */,
+				015CB36912E6273007CEC813 /* PoetryDesignSystem.swift */,
 				01782132C37D6A1E1393C6B9 /* PoemLocationProvider.swift */,
+				81A16E1C415515282FF3A754 /* PoemMusicPlayer.swift */,
+				3D5718A6538BE050FDF17F69 /* PoetGalleryView.swift */,
 				E9D0C31D37A622B5F5477405 /* PoetryApp.swift */,
-				C0A9F2E71E5D4B3C9A7F6012 /* SpotlightGuide.swift */,
+				6219AE591884B9E04A73297E /* Products.storekit */,
+				F9C3DF9D994F99E1647DBDF8 /* SongCiThreeHundred.json */,
+				AAD629E784D60189AE86D4E9 /* SongCiThreeHundredLibrary.swift */,
+				1BD2F38AA54792DABF33C930 /* SpotlightGuide.swift */,
+				EECFFFDE94EAEA267204DCC7 /* StoreManager.swift */,
+				F3A6F7D7D86B09B62834E0D3 /* TangShiThreeHundred.json */,
+				986224FEE3E62C01D561DD0E /* TangShiThreeHundredLibrary.swift */,
+				132B5DFB7E258F843E0B4B4D /* Audio */,
 				A293682FEB78E77485F54FE8 /* Fonts */,
 			);
 			path = Poetry;
@@ -82,12 +162,12 @@
 		A293682FEB78E77485F54FE8 /* Fonts */ = {
 			isa = PBXGroup;
 			children = (
+				7B787452B0D5C00532F94190 /* FZXiaoZhuanTi.ttf */,
 				0B5E1C7761EF91CFD11F58C7 /* HuiwenMincho.otf */,
 				CF022F287632A87217A8F61E /* LXGWWenKaiLite-Regular.ttf */,
-				1D1E38FD32CB4EB39C996C5D /* WenYueGuTiFangSongTC.otf */,
 				A990BA46481D255673C50AF6 /* MaShanZheng-Regular.ttf */,
 				D76D6A60A9F86F4B3285BEBE /* SourceHanSerifCN-ExtraLight.otf */,
-				4DFCE2C327D146D0A495D039 /* FZXiaoZhuanTi.ttf */,
+				6859CCFEC92069C08354BD1F /* WenYueGuTiFangSongTC.otf */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -121,6 +201,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					D32BEA97714DCC2C341228A3 = {
+						DevelopmentTeam = 9G5964XAXT;
+					};
+				};
 			};
 			buildConfigurationList = 3C925A10E976CCBFFD4CE7D1 /* Build configuration list for PBXProject "Poetry" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -132,6 +217,7 @@
 			);
 			mainGroup = 513312DA7977AE798064545E;
 			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -146,13 +232,27 @@
 			buildActionMask = 2147483647;
 			files = (
 				B5A95ED9D07DE734785ED137 /* AIConfig.plist in Resources */,
+				05C10F5EA88CBDA1ED174631 /* ATTRIBUTION.md in Resources */,
 				70C6C1E67BEB9EE0AE98C190 /* Assets.xcassets in Resources */,
+				DD1456093DEDFA8493BCAF70 /* ClassicPoemCommentary-en.json in Resources */,
+				01D8128740A2C4FD8703C57D /* ClassicPoemTitle-en.json in Resources */,
+				6AE96111958BA7282B5864E5 /* ClassicPoemTranslation-en.json in Resources */,
+				A21E34300F0DBA31CBC6D5C7 /* FZXiaoZhuanTi.ttf in Resources */,
 				1DD57F4A995CD42029E8558B /* HuiwenMincho.otf in Resources */,
+				293F14FCF472DF103EE953B7 /* InfoPlist.strings in Resources */,
 				722BE2E663079DD3264F3BDB /* LXGWWenKaiLite-Regular.ttf in Resources */,
-				8E72B57C0A0B4D82960E1F42 /* WenYueGuTiFangSongTC.otf in Resources */,
 				99336E21A91B271726B0A7B5 /* MaShanZheng-Regular.ttf in Resources */,
+				41D01F01E8516EFD0053645D /* Products.storekit in Resources */,
+				3C31BF2EBC887A10D1BB132E /* SongCiThreeHundred.json in Resources */,
 				97E8970525BF6FA8F6A6D65E /* SourceHanSerifCN-ExtraLight.otf in Resources */,
-				7A67A4D2936F4A5182B9074D /* FZXiaoZhuanTi.ttf in Resources */,
+				984BA36C36E8BE7439CB779E /* TangShiThreeHundred.json in Resources */,
+				4DB48F7C4F5FBFC531519E42 /* WenYueGuTiFangSongTC.otf in Resources */,
+				0549E40EF09FE4C9B8446814 /* guqin_yangguan_sandie.m4a in Resources */,
+				F01D352FB7BF7815C95E67BE /* guqin_zuiyu_changwan.m4a in Resources */,
+				5ED398FECB6CF03717D50DFF /* liu_shui.m4a in Resources */,
+				96AF39A7E386C9861E9D12AB /* pei_lan.m4a in Resources */,
+				37F011121183F7A93EF41BB9 /* pingsha_luoyan.m4a in Resources */,
+				30E651F799331555B618CEBC /* qiu_feng_ci.m4a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -164,16 +264,37 @@
 			buildActionMask = 2147483647;
 			files = (
 				D48EDBAA8809DB7764E613A6 /* BailianPoetryClient.swift in Sources */,
+				195BEC16D6D930F582E4C06E /* ClassicPoem.swift in Sources */,
+				577E4C177BB4F8FF570BC57E /* ClassicPoet.swift in Sources */,
+				CEAC62EC2C2F7B7F4C17EE9A /* ClassicPoetryClient.swift in Sources */,
+				3C2D989C46169C6ED8547542 /* ClassicPoetryView.swift in Sources */,
 				B15D3CBF62A6D17DE550784E /* DappledShadowView.swift in Sources */,
-				F1A2B3C4D5E6F7081234ABCD /* OnboardingView.swift in Sources */,
-				24177CBFA190254D7C90BAAF /* PoemComposerView.swift in Sources */,
+				6589AFB4A6B89708BFDF9EDA /* NameTransliterator.swift in Sources */,
+				7A47340D4C087452E0BF4302 /* OnboardingView.swift in Sources */,
+				24177CBFA190254D7C90BAAF /* PoetryDesignSystem.swift in Sources */,
 				997B0EE91162EC7D83940461 /* PoemLocationProvider.swift in Sources */,
+				11CC84A0F09B4779890A464F /* PoemMusicPlayer.swift in Sources */,
+				2BD9BEFD5CD208A4053E5DD9 /* PoetGalleryView.swift in Sources */,
 				4D04335B6FC9293844D726A6 /* PoetryApp.swift in Sources */,
-				C0A9F2E81E5D4B3C9A7F6012 /* SpotlightGuide.swift in Sources */,
+				E234CEAE43D5A0EE46A02AFC /* SongCiThreeHundredLibrary.swift in Sources */,
+				4BECA6E696CE8BEDEFCA0FB7 /* SpotlightGuide.swift in Sources */,
+				00DC6E60E773FA6676458F2B /* StoreManager.swift in Sources */,
+				3B85ED4598D24C64F18C2A84 /* TangShiThreeHundredLibrary.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		E3649A4A8322DBBBD3EBDDEC /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				3BD36889E72BE5CC87689B14 /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		525BFE23A92CF159D996CC35 /* Debug */ = {

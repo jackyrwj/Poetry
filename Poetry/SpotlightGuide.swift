@@ -31,56 +31,56 @@ enum SpotlightStep: Int, Equatable {
 
     var message: String {
         switch self {
-        case .selectMood:       "點擊選一種心情"
-        case .selectImage:      "選一個意境題目"
-        case .selectLine:       "選一句最合心意的"
-        case .tapShare:         "點擊分享詩作"
-        case .selectBackground: "選一張底紙試試"
-        case .tapShareButton:   "點擊分享給朋友"
-        case .returnFromShare:  "分享完成後返回"
-        case .returnHome:       "回到首頁"
-        case .openHistory:      "查看往日詩作"
-        case .openHistoryPoem:  "點開一首詩作"
+        case .selectMood:       AppLanguage.copy("點擊選一種心情", "Choose a feeling")
+        case .selectImage:      AppLanguage.copy("選一個意境題目", "Choose an image")
+        case .selectLine:       AppLanguage.copy("選一句最合心意的", "Choose a line")
+        case .tapShare:         AppLanguage.copy("點擊分享詩作", "Share your poem")
+        case .selectBackground: AppLanguage.copy("選一張底紙試試", "Choose a paper")
+        case .tapShareButton:   AppLanguage.copy("點擊分享給朋友", "Share with friends")
+        case .returnFromShare:  AppLanguage.copy("分享完成後返回", "Return after sharing")
+        case .returnHome:       AppLanguage.copy("回到首頁", "Return home")
+        case .openHistory:      AppLanguage.copy("查看往日詩作", "View past poems")
+        case .openHistoryPoem:  AppLanguage.copy("點開一首詩作", "Open a poem")
         }
     }
 
     var title: String {
         switch self {
-        case .selectMood:       "先選一種心情"
-        case .selectImage:      "選一個意境題目"
-        case .selectLine:       "挑一句入詩"
-        case .tapShare:         "把詩分享出去"
-        case .selectBackground: "換一張底紙"
-        case .tapShareButton:   "生成分享圖"
-        case .returnFromShare:  "回到詩頁"
-        case .returnHome:       "回到首頁"
-        case .openHistory:      "查看往日詩作"
-        case .openHistoryPoem:  "打開一首舊作"
+        case .selectMood:       AppLanguage.copy("先選一種心情", "Choose a feeling")
+        case .selectImage:      AppLanguage.copy("選一個意境題目", "Choose an image")
+        case .selectLine:       AppLanguage.copy("挑一句入詩", "Choose a line")
+        case .tapShare:         AppLanguage.copy("把詩分享出去", "Share your poem")
+        case .selectBackground: AppLanguage.copy("換一張底紙", "Choose a paper")
+        case .tapShareButton:   AppLanguage.copy("生成分享圖", "Create a share image")
+        case .returnFromShare:  AppLanguage.copy("回到詩頁", "Return to poem")
+        case .returnHome:       AppLanguage.copy("回到首頁", "Return home")
+        case .openHistory:      AppLanguage.copy("查看往日詩作", "View past poems")
+        case .openHistoryPoem:  AppLanguage.copy("打開一首舊作", "Open a past poem")
         }
     }
 
     var detail: String {
         switch self {
         case .selectMood:
-            return "點擊高亮的「喜」，讓詩先有一個情緒起點。"
+            return AppLanguage.copy("點擊高亮的「喜」，讓詩先有一個情緒起點。", "Tap the highlighted Chinese character to begin with a feeling.")
         case .selectImage:
-            return "從題目中選一個最有畫面的，它會成為這首詩的方向。"
+            return AppLanguage.copy("從題目中選一個最有畫面的，它會成為這首詩的方向。", "Choose the image that speaks to you; it will guide the poem.")
         case .selectLine:
-            return "候選詩句可以逐句挑選，先點一個最合心意的。"
+            return AppLanguage.copy("候選詩句可以逐句挑選，先點一個最合心意的。", "Choose one Chinese line at a time.")
         case .tapShare:
-            return "詩已完成，可以進入分享頁預覽不同版式。"
+            return AppLanguage.copy("詩已完成，可以進入分享頁預覽不同版式。", "Your poem is complete. Preview it in different layouts.")
         case .selectBackground:
-            return "先試一張免費底紙，看看詩和畫面是否相稱。"
+            return AppLanguage.copy("先試一張免費底紙，看看詩和畫面是否相稱。", "Try a free paper to see how it suits the poem.")
         case .tapShareButton:
-            return "點擊高亮的分享按鈕，呼出系統分享面板。"
+            return AppLanguage.copy("點擊高亮的分享按鈕，呼出系統分享面板。", "Tap the highlighted Share button to open the system share sheet.")
         case .returnFromShare:
-            return "分享完成後，先返回到詩歌完成頁。"
+            return AppLanguage.copy("分享完成後，先返回到詩歌完成頁。", "After sharing, return to the completed poem.")
         case .returnHome:
-            return "回到首頁，下一步看看剛才保存的詩。"
+            return AppLanguage.copy("回到首頁，下一步看看剛才保存的詩。", "Return home, then view the poem you just saved.")
         case .openHistory:
-            return "右上角可以打開歷史，查看以前生成的詩作。"
+            return AppLanguage.copy("右上角可以打開歷史，查看以前生成的詩作。", "Open History in the upper-right corner to view earlier poems.")
         case .openHistoryPoem:
-            return "點開第一首詩，教程就完成了。"
+            return AppLanguage.copy("點開第一首詩，教程就完成了。", "Open the first poem to finish the tutorial.")
         }
     }
 }
@@ -269,9 +269,14 @@ private struct SpotlightOverlayView: View {
 
             SpotlightBubble(
                 title: step.title.poemScript(script),
-                detail: step.detail.poemScript(script)
+                detail: step.detail.poemScript(script),
+                nextTitle: step.next == nil
+                    ? AppLanguage.copy("完成", "Done")
+                    : AppLanguage.copy("下一条", "Next")
             ) {
                 guide.skip()
+            } onNext: {
+                guide.advance()
             }
                 .frame(width: cardWidth)
                 .position(
@@ -287,7 +292,9 @@ private struct SpotlightOverlayView: View {
 private struct SpotlightBubble: View {
     let title: String
     let detail: String
+    let nextTitle: String
     let onSkip: () -> Void
+    let onNext: () -> Void
 
     private let paper = Color(red: 0.99, green: 0.96, blue: 0.89)
     private let ink = Color(red: 0.18, green: 0.14, blue: 0.10)
@@ -309,13 +316,19 @@ private struct SpotlightBubble: View {
             }
 
             HStack {
-                Button("跳过") {
+                Button(AppLanguage.copy("跳过", "Skip")) {
                     onSkip()
                 }
                 .font(.system(size: 16, weight: .semibold, design: .serif))
                 .foregroundStyle(secondaryInk)
 
                 Spacer()
+
+                Button(nextTitle) {
+                    onNext()
+                }
+                .font(.system(size: 16, weight: .semibold, design: .serif))
+                .foregroundStyle(cinnabar)
             }
         }
         .padding(.horizontal, 22)

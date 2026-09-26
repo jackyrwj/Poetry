@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "poet_su_shi.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
