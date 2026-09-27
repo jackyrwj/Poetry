@@ -13,6 +13,10 @@ enum ShadowStyle: String, CaseIterable, Identifiable {
     static let storageKey = "poem_shadow_style"
     static let visibleCases = allCases.filter { $0 != .none && $0 != .dappled }
 
+    /// 素紙 is the Chinese default (no light effect); English readers keep the
+    /// morning-light look that shipped with the first release.
+    static var defaultStyle: ShadowStyle { AppLanguage.isEnglish ? .morning : .none }
+
     var displayName: String {
         switch self {
         case .morning: return AppLanguage.copy("晨光", "Morning light")
@@ -72,7 +76,9 @@ enum PoemBackground: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     static let storageKey = "poem_background"
-    static let defaultBackground = PoemBackground.boat
+    /// 素紙 is the Chinese default; English readers keep the ferry-boat paper
+    /// that shipped with the first release.
+    static var defaultBackground: PoemBackground { AppLanguage.isEnglish ? .boat : .none }
     private static let didMigrateDefaultToBoatKey = "poem_background_default_boat_migrated"
 
     var displayName: String {
@@ -114,9 +120,11 @@ enum PoemBackground: String, CaseIterable, Identifiable {
         }
     }
 
-    /// All image backgrounds (excluding .none)
+    /// All image backgrounds (excluding .none), free ones first so the
+    /// pickers surface what everyone can use before the premium papers.
     static var imageBackgrounds: [PoemBackground] {
-        allCases.filter { $0 != .none }
+        let images = allCases.filter { $0 != .none }
+        return images.filter { !$0.isPremium } + images.filter { $0.isPremium }
     }
 
     static var freeImageBackgrounds: [PoemBackground] {
@@ -151,6 +159,12 @@ enum PoemBackground: String, CaseIterable, Identifiable {
         let defaults = UserDefaults.standard
         let key = "poem_background_default_boat_app_migrated_v2"
         guard !defaults.bool(forKey: key) else { return }
+        // 素紙 is the Chinese default again, so only English readers migrate
+        // a legacy unset/none selection onto the ferry-boat paper.
+        guard AppLanguage.isEnglish else {
+            defaults.set(true, forKey: key)
+            return
+        }
         let selectedBackground = PoemBackground(rawValue: selectedBgRaw)
         if selectedBackground == nil || selectedBackground == PoemBackground.none {
             selectedBgRaw = defaultBackground.rawValue
@@ -162,10 +176,12 @@ enum PoemBackground: String, CaseIterable, Identifiable {
 // MARK: - Main view
 
 struct DappledShadowView: View {
-    @AppStorage(ShadowStyle.storageKey) private var styleRaw = ShadowStyle.morning.rawValue
+    @AppStorage(ShadowStyle.storageKey) private var styleRaw = ShadowStyle.defaultStyle.rawValue
+
+    var styleOverride: ShadowStyle? = nil
 
     private var style: ShadowStyle {
-        ShadowStyle(rawValue: styleRaw) ?? .morning
+        styleOverride ?? ShadowStyle(rawValue: styleRaw) ?? .morning
     }
 
     var body: some View {
@@ -520,3 +536,21 @@ private let dappledLeaves: [Leaf] = [
     Leaf(bx:0.75, by:0.90, w:58, h:22, rot:-0.15, fx:0.30, fy:0.27, ff:0.88, sx:0.020, sy:0.014, px:1.50, py:4.50, a:0.13, blur:8),
     Leaf(bx:0.92, by:0.85, w:40, h:15, rot: 1.30, fx:0.50, fy:0.44, ff:1.30, sx:0.012, sy:0.007, px:3.20, py:0.20, a:0.10, blur:4),
 ]
+
+// MARK: - Preview tile
+
+/// Animated thumbnail of a light-effect paper, used in the paper pickers.
+struct ShadowPreviewTile: View {
+    let style: ShadowStyle
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let previewScale = max(0.12, min(size.width, size.height) / 360)
+                ShadowRenderer.draw(style: style, context: &context, size: size, t: t, scale: previewScale)
+            }
+        }
+        .background(Color.white)
+    }
+}

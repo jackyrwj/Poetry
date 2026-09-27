@@ -1,13 +1,18 @@
 import SwiftUI
+import UIKit
 
 struct ClassicPoetryView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var dailyDate = Date.now
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
     @AppStorage(PoemScript.storageKey) private var scriptRawValue = PoemScript.simplified.rawValue
     @State private var query = ""
-    @State private var remotePoems: [ClassicPoem] = []
     @State private var favoriteIDs = ClassicPoemFavorites.load()
-    @State private var selectedScope: PoetryScope = .featured
+    @State private var selectedScope: PoetryScope = .all
     @State private var showsSettings = false
+    @State private var path: [PoetRoute] = []
+    @State private var showsPaywall = false
+    @ObservedObject private var store = StoreManager.shared
 
     private var typeface: PoemTypeface {
         PoemTypeface(rawValue: typefaceRawValue) ?? .kaiti
@@ -23,7 +28,7 @@ struct ClassicPoetryView: View {
 
     private var localPoems: [ClassicPoem] {
         switch selectedScope {
-        case .featured:
+        case .all:
             ClassicPoemLibrary.localSearch(normalizedQuery)
         case .tangShiThreeHundred:
             TangShiThreeHundredLibrary.search(normalizedQuery)
@@ -31,6 +36,15 @@ struct ClassicPoetryView: View {
             SongCiThreeHundredLibrary.search(normalizedQuery)
         case .favorites:
             []
+        }
+    }
+
+    private var discoveryPoems: [ClassicPoem] {
+        switch selectedScope {
+        case .all: DailyPoemPicker.corpus
+        case .tangShiThreeHundred: TangShiThreeHundredLibrary.poems
+        case .songCiThreeHundred: SongCiThreeHundredLibrary.poems
+        case .favorites: []
         }
     }
 
@@ -43,27 +57,26 @@ struct ClassicPoetryView: View {
             return cached.filter { favoriteIDs.contains($0.id) }
         }
 
-        let localKeys = Set(localPoems.map {
-            "\($0.title.poemScript(.simplified))|\($0.author.poemScript(.simplified))"
-        })
-        let combined = localPoems + remotePoems.filter {
-            !localKeys.contains("\($0.title.poemScript(.simplified))|\($0.author.poemScript(.simplified))")
-        }
-        return combined
+        let combined = localPoems
+        // Keep the original order within each access tier.
+        return combined.filter { !$0.requiresMembership }
+            + combined.filter { $0.requiresMembership }
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 PaperBackground()
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         header
-                        ClassicSearchField(text: $query)
-                        if selectedScope != .favorites {
-                            collectionPicker
+                        if selectedScope != .favorites && normalizedQuery.isEmpty,
+                           let dailyPoem = DailyPoemPicker.poem(on: dailyDate) {
+                            DailyPoemCard(poem: dailyPoem, date: dailyDate, onOpenPoem: openPoem)
                         }
+                        ClassicSearchField(text: $query)
+                        collectionPicker
 
                         resultsHeader
 
@@ -71,7 +84,9 @@ struct ClassicPoetryView: View {
                             emptyState
                         } else {
                             ForEach(displayedPoems) { poem in
-                                NavigationLink(value: poem) {
+                                Button {
+                                    openPoem(poem)
+                                } label: {
                                     ClassicPoemCard(poem: poem, isFavorite: favoriteIDs.contains(poem.id))
                                 }
                                 .buttonStyle(.plain)
@@ -85,19 +100,53 @@ struct ClassicPoetryView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
             .navigationBarHidden(true)
-            .navigationDestination(for: ClassicPoem.self) { poem in
-                ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs)
-            }
-            .task(id: "\(normalizedQuery)|\(script.rawValue)|\(selectedScope.rawValue)") {
-                await searchRemotely()
+            .navigationDestination(for: PoetRoute.self) { route in
+                switch route {
+                case .poet(let poet):
+                    PoetDetailView(poet: poet, favoriteIDs: $favoriteIDs, path: $path)
+                case .poem(let poem):
+                    ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs, path: $path)
+                }
             }
             .sheet(isPresented: $showsSettings) {
                 FontSettingsView()
+            }
+            .sheet(isPresented: $showsPaywall) {
+                PaywallView {
+                    showsPaywall = false
+                }
             }
         }
         .environment(\.poemTypeface, typeface)
         .environment(\.poemScript, script)
         .tint(ClassicPalette.cinnabar)
+        .onChange(of: scenePhase) { _, _ in
+            dailyDate = .now
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            dailyDate = .now
+        }
+        .task(id: dailyDate) {
+            guard scenePhase == .active else { return }
+            // Sleep until the next local midnight; changing the date or scene
+            // phase cancels this task and schedules against the current clock.
+            guard let midnight = Calendar.autoupdatingCurrent.dateInterval(of: .day, for: .now)?.end else { return }
+            let delay = max(0, midnight.timeIntervalSinceNow)
+            do {
+                try await Task.sleep(for: .seconds(delay))
+                dailyDate = .now
+            } catch {
+                // Cancellation is expected when leaving the foreground.
+            }
+        }
+    }
+
+    private func openPoem(_ poem: ClassicPoem) {
+        guard !poem.requiresMembership || store.isPremium else {
+            showsPaywall = true
+            return
+        }
+        path.append(.poem(poem))
     }
 
     private var header: some View {
@@ -106,9 +155,6 @@ struct ClassicPoetryView: View {
                 Text((selectedScope == .favorites ? AppLanguage.copy("我的收藏", "Saved poems") : AppLanguage.copy("赏诗", "Read")).poemScript(script))
                     .font(typeface.font(size: 29))
                     .foregroundStyle(ClassicPalette.ink)
-                Text((selectedScope == .favorites ? AppLanguage.copy("留住每一次心动", "Keep the poems that move you") : AppLanguage.copy("精选与唐诗三百首，离线可读", "Selected poems and Tang Poems Three Hundred, available offline")).poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk)
             }
 
             Spacer()
@@ -122,8 +168,8 @@ struct ClassicPoetryView: View {
     private var collectionPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ScopeButton(title: AppLanguage.copy("全部", "All"), selected: selectedScope == .featured) {
-                    selectedScope = .featured
+                ScopeButton(title: AppLanguage.copy("全部", "All"), selected: selectedScope == .all) {
+                    selectedScope = .all
                 }
                 ScopeButton(title: AppLanguage.copy("唐诗", "Tang Poems"), selected: selectedScope == .tangShiThreeHundred) {
                     selectedScope = .tangShiThreeHundred
@@ -131,20 +177,42 @@ struct ClassicPoetryView: View {
                 ScopeButton(title: AppLanguage.copy("宋词", "Song Lyrics"), selected: selectedScope == .songCiThreeHundred) {
                     selectedScope = .songCiThreeHundred
                 }
+                ScopeButton(title: AppLanguage.copy("我的收藏", "Saved"), selected: selectedScope == .favorites) {
+                    selectedScope = .favorites
+                }
             }
         }
     }
 
     private var resultsHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(resultsTitle.poemScript(script))
-                .font(typeface.titleFont)
-                .foregroundStyle(ClassicPalette.ink)
-            Spacer()
-            if selectedScope != .favorites && !displayedPoems.isEmpty {
-                Text(AppLanguage.isEnglish ? "\(displayedPoems.count) poems" : "\(displayedPoems.count) 首")
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(resultsTitle.poemScript(script))
+                    .font(typeface.titleFont)
+                    .foregroundStyle(ClassicPalette.ink)
+                if selectedScope != .favorites && !displayedPoems.isEmpty {
+                    Text(AppLanguage.isEnglish ? "\(displayedPoems.count) poems" : "\(displayedPoems.count) 首")
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.mutedInk)
+                }
+            }
+            Spacer(minLength: 0)
+            if selectedScope != .favorites && normalizedQuery.isEmpty {
+                Button {
+                    guard let poem = DailyPoemPicker.random(
+                        in: discoveryPoems,
+                        hasPremiumAccess: store.isPremium
+                    ) else { return }
+                    openPoem(poem)
+                } label: {
+                    Label(AppLanguage.copy("随机一首", "Random poem").poemScript(script), systemImage: "dice.fill")
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.cinnabar)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(.white.opacity(0.76), in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.top, 4)
@@ -153,7 +221,7 @@ struct ClassicPoetryView: View {
     private var resultsTitle: String {
         if !normalizedQuery.isEmpty { return AppLanguage.copy("搜索结果", "Search results") }
         switch selectedScope {
-        case .featured: return AppLanguage.copy("精选诗词", "Selected poems")
+        case .all: return AppLanguage.copy("全部诗词", "All poems")
         case .tangShiThreeHundred: return TangShiThreeHundredLibrary.collectionTitle
         case .songCiThreeHundred: return SongCiThreeHundredLibrary.collectionTitle
         case .favorites: return AppLanguage.copy("我的收藏", "Saved poems")
@@ -175,33 +243,6 @@ struct ClassicPoetryView: View {
         .padding(.vertical, 54)
     }
 
-    private func searchRemotely() async {
-        guard selectedScope == .featured else {
-            remotePoems = []
-            return
-        }
-        guard !normalizedQuery.isEmpty else {
-            remotePoems = []
-            return
-        }
-        guard normalizedQuery.count >= 3 else {
-            remotePoems = []
-            return
-        }
-
-        do {
-            try await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else { return }
-            let results = try await ClassicPoetryClient().search(query: normalizedQuery, script: script)
-            guard !Task.isCancelled else { return }
-            remotePoems = results
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled else { return }
-            remotePoems = []
-        }
-    }
 }
 
 /// A dedicated home for poems saved while reading. Its card grid intentionally
@@ -212,13 +253,15 @@ struct SavedClassicPoemsView: View {
     @State private var favoriteIDs = ClassicPoemFavorites.load()
     @State private var poems = ClassicPoemFavorites.loadPoems()
     @State private var showsSettings = false
+    @State private var path: [PoetRoute] = []
+    @State private var poemPendingRemoval: ClassicPoem?
 
     private var savedPoems: [ClassicPoem] {
         poems.filter { favoriteIDs.contains($0.id) }
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 PaperBackground()
 
@@ -234,23 +277,45 @@ struct SavedClassicPoemsView: View {
                                 spacing: 18
                             ) {
                                 ForEach(savedPoems) { poem in
-                                    NavigationLink {
-                                        ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs)
-                                    } label: {
-                                        SavedClassicPoemCard(poem: poem)
-                                    }
-                                    .buttonStyle(.plain)
+                                    savedPoemCell(poem)
                                 }
                             }
                             .padding(.horizontal, 24)
-                            .padding(.bottom, 42)
+                            .padding(.bottom, 50)
                         }
                     }
                 }
             }
             .navigationBarHidden(true)
+            .navigationDestination(for: PoetRoute.self) { route in
+                switch route {
+                case .poet(let poet):
+                    PoetDetailView(poet: poet, favoriteIDs: $favoriteIDs, path: $path)
+                case .poem(let poem):
+                    ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs, path: $path)
+                }
+            }
             .sheet(isPresented: $showsSettings) {
                 FontSettingsView()
+            }
+            .alert("Remove from saved poems?", isPresented: Binding(
+                get: { poemPendingRemoval != nil },
+                set: { if !$0 { poemPendingRemoval = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { poemPendingRemoval = nil }
+                Button("Remove", role: .destructive) {
+                    if let poem = poemPendingRemoval {
+                        SensoryFeedback.lightTap()
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            favoriteIDs.remove(poem.id)
+                            ClassicPoemFavorites.save(favoriteIDs)
+                            poems = ClassicPoemFavorites.loadPoems()
+                        }
+                    }
+                    poemPendingRemoval = nil
+                }
+            } message: {
+                Text("You can save this poem again while reading.")
             }
         }
         .onAppear(perform: reloadSavedPoems)
@@ -261,15 +326,15 @@ struct SavedClassicPoemsView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(AppLanguage.copy("我的收藏", "Saved").poemScript(script))
                     .font(typeface.titleFont)
                     .foregroundStyle(ClassicPalette.ink)
-                Text((savedPoems.isEmpty
-                      ? AppLanguage.copy("留住每一次心动", "Keep the poems that move you")
-                      : AppLanguage.copy("\\(savedPoems.count) 首诗词", "\\(savedPoems.count) saved poems")).poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk)
+                if !savedPoems.isEmpty {
+                    Text("\(savedPoems.count) saved \(savedPoems.count == 1 ? "poem" : "poems") · Tap a card to read")
+                        .font(.system(size: 12))
+                        .foregroundStyle(ClassicPalette.mutedInk.opacity(0.72))
+                }
             }
 
             Spacer()
@@ -299,6 +364,35 @@ struct SavedClassicPoemsView: View {
         .padding(.bottom, 80)
     }
 
+    private func savedPoemCell(_ poem: ClassicPoem) -> some View {
+        ZStack(alignment: .topTrailing) {
+            NavigationLink {
+                ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs, path: $path)
+            } label: {
+                SavedClassicPoemCard(poem: poem)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                poemPendingRemoval = poem
+            } label: {
+                Image(systemName: "bookmark.slash")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(ClassicPalette.cinnabar)
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.88), in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(ClassicPalette.cinnabar.opacity(0.45), lineWidth: 0.8)
+                    }
+            }
+            .buttonStyle(.plain)
+            .padding(7)
+            .accessibilityLabel("Remove \(poem.localizedTitle) from saved poems")
+        }
+        .transition(.opacity.combined(with: .offset(y: 8)))
+    }
+
     private func reloadSavedPoems() {
         favoriteIDs = ClassicPoemFavorites.load()
         poems = ClassicPoemFavorites.loadPoems()
@@ -306,57 +400,69 @@ struct SavedClassicPoemsView: View {
 }
 
 private struct SavedClassicPoemCard: View {
-    @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     let poem: ClassicPoem
 
-    private var title: String {
-        poem.localizedTitle.poemScript(script)
+    var body: some View {
+        PoemArchiveCard(
+            title: poem.localizedTitle.poemScript(script),
+            subtitle: poem.localizedAuthor,
+            titleLineLimit: 2
+        ) {
+            SavedClassicPoemArtworkThumbnail(poem: poem)
+        }
+    }
+}
+
+private struct SavedClassicPoemArtworkThumbnail: View {
+    let poem: ClassicPoem
+    private let canvasSize = ShareArtworkLayout.portrait.canvasSize
+
+    // A bounded excerpt keeps long poems and ci lyrics legible on a small card.
+    // The reading destination continues to show the complete work.
+    private var excerptLines: [String] {
+        let phrases = poem.lines.flatMap {
+            $0.components(separatedBy: CharacterSet(charactersIn: "，。！？；：、,.!?;:"))
+        }
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        return phrases.prefix(4).map { phrase in
+            phrase.count > 16 ? String(phrase.prefix(15)) + "…" : phrase
+        }
+    }
+
+    private var excerptTitle: String {
+        poem.title.count > 20 ? String(poem.title.prefix(19)) + "…" : poem.title
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Image(poem.backgroundImageName)
-                .resizable()
-                .scaledToFill()
-                .frame(height: 142)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.36)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                }
-                .overlay(alignment: .bottomLeading) {
-                    Text(poem.title.poemScript(script))
-                        .font(typeface.smallFont)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .padding(10)
-                }
-
-            Text(title)
-                .font(typeface.smallFont)
-                .foregroundStyle(ClassicPalette.ink)
-                .lineLimit(2)
-                .frame(minHeight: 32, alignment: .topLeading)
-
-            Text(poem.localizedAttribution.poemScript(script))
-                .font(.system(size: 10, weight: .medium, design: .serif))
-                .foregroundStyle(ClassicPalette.mutedInk.opacity(0.72))
-                .lineLimit(1)
+        GeometryReader { geometry in
+            let scale = geometry.size.width / canvasSize.width
+            SharePoemArtwork(
+                layout: .portrait,
+                imageTitle: excerptTitle,
+                lines: excerptLines,
+                locationMark: nil,
+                lunarDateText: poem.author,
+                dayPeriodText: "",
+                sealName: "",
+                showsLight: true,
+                showsSeal: false,
+                showsTitle: true,
+                background: poem.background,
+                usesVerticalTextOverride: true
+            )
+            .frame(width: canvasSize.width, height: canvasSize.height)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .clipped()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
+        .aspectRatio(ShareArtworkLayout.portrait.aspectRatio, contentMode: .fit)
     }
 }
 
 private enum PoetryScope: String {
-    case featured
+    case all
     case tangShiThreeHundred
     case songCiThreeHundred
     case favorites
@@ -365,7 +471,7 @@ private enum PoetryScope: String {
         switch self {
         case .tangShiThreeHundred: AppLanguage.copy(TangShiThreeHundredLibrary.collectionTitle, "Tang Poems")
         case .songCiThreeHundred: AppLanguage.copy(SongCiThreeHundredLibrary.collectionTitle, "Song Lyrics")
-        case .featured: AppLanguage.copy("赏诗", "Read")
+        case .all: AppLanguage.copy("全部", "All")
         case .favorites: AppLanguage.copy("我的收藏", "Saved poems")
         }
     }
@@ -386,6 +492,9 @@ private struct ClassicSearchField: View {
                 .foregroundStyle(ClassicPalette.ink)
                 .focused($isFocused)
                 .submitLabel(.search)
+                .onSubmit {
+                    isFocused = false
+                }
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -401,6 +510,11 @@ private struct ClassicSearchField: View {
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .stroke(isFocused ? ClassicPalette.cinnabar.opacity(0.45) : .white.opacity(0.8), lineWidth: 1)
+        }
+        .onChange(of: text) { oldValue, newValue in
+            if !oldValue.isEmpty && newValue.isEmpty {
+                isFocused = false
+            }
         }
     }
 }
@@ -430,19 +544,104 @@ private struct ScopeButton: View {
     }
 }
 
-struct ClassicPoemCard: View {
+/// A single reading target for today's fixed poem. Random discovery lives
+/// beside the collection heading, outside this card.
+private struct DailyPoemCard: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     let poem: ClassicPoem
+    let date: Date
+    let onOpenPoem: (ClassicPoem) -> Void
+
+    var body: some View {
+        Button {
+            onOpenPoem(poem)
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center) {
+                    Text(AppLanguage.copy("每日一首", "Poem of the Day").poemScript(script))
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.cinnabar)
+                    Spacer()
+                    Text(date, format: .dateTime.month().day())
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.mutedInk)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(poem.localizedTitle.poemScript(script))
+                        .font(typeface.font(size: 21))
+                        .foregroundStyle(ClassicPalette.ink)
+                    Text(poem.localizedAuthor.poemScript(script))
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.mutedInk)
+                    Text(poem.lines.prefix(2).joined(separator: "\n").poemScript(script))
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.ink.opacity(0.84))
+                        .lineSpacing(4)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+            .background(.white.opacity(0.76), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .stroke(.white.opacity(0.72), lineWidth: 0.8)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(AppLanguage.copy("阅读今日诗词", "Read today's poem").poemScript(script))
+    }
+}
+
+struct ClassicPoemCard: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @ObservedObject private var store = StoreManager.shared
+    let poem: ClassicPoem
     let isFavorite: Bool
 
-    /// In English the card leads with the translated title and keeps the
-    /// original beside it; in Chinese only the original is shown.
-    private var cardTitle: String {
-        guard let englishTitle = poem.englishTitle else {
-            return poem.localizedTitle.poemScript(script)
+    private var isLocked: Bool {
+        poem.requiresMembership && !store.isPremium
+    }
+
+    /// In English the card leads with the translated title (up to two lines)
+    /// and sets the original underneath; in Chinese only the original is shown.
+    @ViewBuilder
+    private var titleBlock: some View {
+        if let englishTitle = poem.englishTitle {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(englishTitle.poemScript(script))
+                    .font(typeface.font(size: 16))
+                    .foregroundStyle(ClassicPalette.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(poem.title.poemScript(script))
+                    .font(typeface.font(size: 14))
+                    .foregroundStyle(ClassicPalette.mutedInk)
+                    .lineLimit(1)
+            }
+        } else {
+            Text(poem.localizedTitle.poemScript(script))
+                .font(typeface.font(size: 19))
+                .foregroundStyle(ClassicPalette.ink)
+                .lineLimit(1)
         }
-        return "\(englishTitle.poemScript(script))（\(poem.title.poemScript(script))）"
+    }
+
+    /// A taste of the opening lines; the preview stays in Chinese mode, where
+    /// readers can skim it, and yields its space to the bilingual title in English.
+    @ViewBuilder
+    private var openingLines: some View {
+        if !AppLanguage.isEnglish {
+            Text(poem.lines.prefix(2).joined(separator: "\n").poemScript(script))
+                .font(typeface.smallFont)
+                .foregroundStyle(ClassicPalette.ink.opacity(0.84))
+                .lineSpacing(4)
+                .lineLimit(2)
+        }
     }
 
     var body: some View {
@@ -455,29 +654,25 @@ struct ClassicPoemCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(cardTitle)
-                        .font(typeface.font(size: 19))
-                        .foregroundStyle(ClassicPalette.ink)
-                        .lineLimit(1)
+                HStack(alignment: .top, spacing: 6) {
+                    titleBlock
                     Spacer(minLength: 6)
                     if isFavorite {
                         Image(systemName: "bookmark.fill")
                             .font(.system(size: 12))
                             .foregroundStyle(ClassicPalette.cinnabar)
+                            .padding(.top, 3)
                     }
                 }
 
-                Text(poem.localizedAttribution.poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(poem.localizedAuthor.poemScript(script))
+                        .font(typeface.smallFont)
+                        .foregroundStyle(ClassicPalette.mutedInk)
+                        .lineLimit(1)
+                }
 
-                Text(poem.lines.prefix(2).joined(separator: "\n").poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.ink.opacity(0.84))
-                    .lineSpacing(4)
-                    .lineLimit(2)
+                openingLines
             }
             .padding(.vertical, 3)
         }
@@ -487,6 +682,19 @@ struct ClassicPoemCard: View {
             RoundedRectangle(cornerRadius: 19, style: .continuous)
                 .stroke(.white.opacity(0.72), lineWidth: 0.8)
         }
+        .overlay(alignment: .topTrailing) {
+            if isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(ClassicPalette.cinnabar.opacity(0.85))
+                    .padding(10)
+            }
+        }
+        .accessibilityLabel(
+            AppLanguage.isEnglish
+                ? "\(poem.localizedTitle) by \(poem.localizedAuthor)\(isLocked ? ", members only" : "")"
+                : "\(poem.author)《\(poem.title)》\(isLocked ? "，雅集會員可讀" : "")"
+        )
     }
 }
 
@@ -497,40 +705,40 @@ struct ClassicPoemDetailView: View {
     @EnvironmentObject private var musicPlayer: PoemMusicPlayer
     let poem: ClassicPoem
     @Binding var favoriteIDs: Set<String>
-    @State private var aiAppreciation: String?
-    @State private var isGenerating = false
-    @State private var generationError: String?
+    let path: Binding<[PoetRoute]>
     @State private var showsShare = false
     @State private var showsMusicCredits = false
-    @State private var paywallReason: PaywallReason?
+    @State private var showsPaywall = false
+    @State private var pendingPoet: ClassicPoet?
+    @State private var readingColumnWidth: CGFloat = 0
     @ObservedObject private var store = StoreManager.shared
 
     private var isFavorite: Bool { favoriteIDs.contains(poem.id) }
     private var hasPremiumAccess: Bool { store.isPremium }
-    private var displayedAppreciation: String? { poem.localizedAppreciation ?? aiAppreciation }
-    private var hasBundledAppreciation: Bool { poem.localizedAppreciation != nil }
-    private var readingLines: [String] {
-        poem.lines.flatMap(Self.splitAtSentenceEndings)
+    private var poet: ClassicPoet? { ClassicPoetLibrary.find(name: poem.author) }
+    /// Keep each verse on one row when it fits; only when the whole verse is
+    /// too wide, break it into clause rows, and only when every clause still
+    /// fits — otherwise the verse stays whole and wraps evenly instead of
+    /// stranding a few characters on a second row.
+    private var adaptiveReadingLines: [String] {
+        poem.lines.flatMap { line -> [String] in
+            let usableWidth = readingColumnWidth - 2
+            guard usableWidth > 0 else { return [line] }
+
+            let fits: (String) -> Bool = { PoemVerseSplitter.fitsOnOneLine($0.poemScript(script), typeface: typeface, fontSize: 20, maxWidth: usableWidth) }
+            if fits(line) { return [line] }
+
+            let segments = PoemVerseSplitter.split(line)
+            let allFit = segments.count > 1 && segments.allSatisfy(fits)
+            return allFit ? segments : [line]
+        }
     }
 
-    private static func splitAtSentenceEndings(_ line: String) -> [String] {
-        var lines: [String] = []
-        var currentLine = ""
-        let sentenceEndings: Set<Character> = ["，", "。", "！", "？", "；", "：", ",", ".", "!", "?", ";", ":"]
-
-        for character in line {
-            currentLine.append(character)
-            if sentenceEndings.contains(character) {
-                lines.append(currentLine)
-                currentLine = ""
-            }
+    private struct ReadingColumnWidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
         }
-
-        if !currentLine.isEmpty {
-            lines.append(currentLine)
-        }
-
-        return lines.isEmpty ? [line] : lines
     }
 
     private static let loweredPunctuation: Set<Character> = ["，", "。", "；", "、", "：", ",", ";", ":"]
@@ -555,10 +763,10 @@ struct ClassicPoemDetailView: View {
         return result + Text(run)
     }
 
-    init(poem: ClassicPoem, favoriteIDs: Binding<Set<String>>) {
+    init(poem: ClassicPoem, favoriteIDs: Binding<Set<String>>, path: Binding<[PoetRoute]>) {
         self.poem = poem
         self._favoriteIDs = favoriteIDs
-        self._aiAppreciation = State(initialValue: ClassicAppreciationCache.value(for: poem.id))
+        self.path = path
     }
 
     var body: some View {
@@ -593,15 +801,19 @@ struct ClassicPoemDetailView: View {
         .fullScreenCover(isPresented: $showsShare) {
             PoemSharePreviewView(
                 imageTitle: poem.localizedTitle.poemScript(script),
-                lines: poem.lines.map { $0.poemScript(script) },
-                locationMark: "\(poem.localizedDynasty) · \(poem.localizedAuthor)".poemScript(script),
+                lines: poem.lines,
+                locationMark: poem.localizedAuthor.poemScript(script),
                 lunarDateText: "",
                 dayPeriodText: ""
             )
         }
-        .sheet(item: $paywallReason) { reason in
-            PaywallView(reason: reason) {
-                paywallReason = nil
+        .sheet(isPresented: $showsPaywall) {
+            PaywallView {
+                showsPaywall = false
+                if let pendingPoet {
+                    path.wrappedValue.append(.poet(pendingPoet))
+                    self.pendingPoet = nil
+                }
             }
         }
         .sheet(isPresented: $showsMusicCredits) {
@@ -618,13 +830,50 @@ struct ClassicPoemDetailView: View {
                 .font(typeface.font(size: poem.localizedTitle.count > 24 ? 23 : 30))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(ClassicPalette.ink)
-            Text("\(poem.localizedDynasty) · \(poem.localizedAuthor)".poemScript(script))
-                .font(typeface.smallFont)
-                .foregroundStyle(ClassicPalette.mutedInk)
+            poetLink(poem.localizedAuthor)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 20)
         .padding(.bottom, 18)
+    }
+
+    /// Tapping the attribution opens the poet's profile. Members-only profiles
+    /// reuse the gallery's paywall flow; authors without a profile render as
+    /// plain, non-tappable text.
+    private func poetLink(_ text: String) -> some View {
+        Group {
+            if let poet {
+                Button {
+                    openPoetProfile(poet)
+                } label: {
+                    poetLinkLabel(text)
+                }
+                .buttonStyle(.plain)
+            } else {
+                poetLinkLabel(text)
+            }
+        }
+    }
+
+    private func poetLinkLabel(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Text(text.poemScript(script))
+            if poet != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+        }
+        .font(typeface.smallFont)
+        .foregroundStyle(ClassicPalette.mutedInk)
+    }
+
+    private func openPoetProfile(_ poet: ClassicPoet) {
+        guard !poet.requiresMembership || hasPremiumAccess else {
+            pendingPoet = poet
+            showsPaywall = true
+            return
+        }
+        path.wrappedValue.append(.poet(poet))
     }
 
     private var detailContent: some View {
@@ -639,8 +888,22 @@ struct ClassicPoemDetailView: View {
 
     private var readingPaper: some View {
         VStack(alignment: .leading, spacing: 22) {
+            // English readers need the Chinese original above the text; the
+            // Chinese hero already carries this title, so it stays hidden there.
+            if AppLanguage.isEnglish {
+                VStack(spacing: 8) {
+                    Text(poem.title.poemScript(script))
+                        .font(typeface.font(size: poem.title.count > 24 ? 20 : 24))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(ClassicPalette.ink)
+                    poetLink(poem.author)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
+            }
+
             VStack(spacing: 10) {
-                ForEach(Array(readingLines.enumerated()), id: \.offset) { _, line in
+                ForEach(Array(adaptiveReadingLines.enumerated()), id: \.offset) { _, line in
                     poemLineText(line, fontSize: 20)
                         .font(typeface.font(size: 20))
                         .foregroundStyle(ClassicPalette.ink)
@@ -650,6 +913,13 @@ struct ClassicPoemDetailView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .preference(key: ReadingColumnWidthKey.self, value: geometry.size.width)
+                }
+            }
+            .onPreferenceChange(ReadingColumnWidthKey.self) { readingColumnWidth = $0 }
 
             musicSection
 
@@ -657,14 +927,11 @@ struct ClassicPoemDetailView: View {
                 DetailSection(title: AppLanguage.copy("今译", "Translation"), text: translation)
             }
 
-            if let appreciation = displayedAppreciation {
+            if let appreciation = poem.localizedAppreciation {
                 DetailSection(
-                    title: hasBundledAppreciation ? AppLanguage.copy("赏析", "Commentary") : AppLanguage.copy("AI 赏析", "AI commentary"),
-                    text: appreciation,
-                    footnote: hasBundledAppreciation ? nil : AppLanguage.copy("由 AI 生成，仅作阅读参考。", "Generated by AI for reading reference only.")
+                    title: AppLanguage.copy("赏析", "Commentary"),
+                    text: appreciation
                 )
-            } else {
-                aiAppreciationPrompt
             }
         }
         .padding(.horizontal, 22)
@@ -756,46 +1023,6 @@ struct ClassicPoemDetailView: View {
         }
     }
 
-    private var aiAppreciationPrompt: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(AppLanguage.copy("赏析", "Commentary").poemScript(script))
-                .font(typeface.titleFont)
-                .foregroundStyle(ClassicPalette.ink)
-            Text(AppLanguage.copy("这首诗暂未收录精选赏析，可以请 AI 从意象、语言和情感入手解读。", "This poem has no curated commentary yet. Ask AI to explore its imagery, language, and feeling.").poemScript(script))
-                .font(typeface.bodyFont)
-                .foregroundStyle(ClassicPalette.mutedInk)
-                .lineSpacing(6)
-
-            if !hasPremiumAccess {
-                Text(AppLanguage.copy("每日可免费生成 1 次；雅集会员不限次。", "One free commentary each day. Pro is unlimited.").poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk.opacity(0.76))
-            }
-
-            if let generationError {
-                Text(generationError.poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.cinnabar)
-            }
-
-            Button {
-                Task { await generateAppreciation() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isGenerating { ProgressView().tint(.white) }
-                    Text((isGenerating ? AppLanguage.copy("正在品读…", "Reading…") : AppLanguage.copy("生成 AI 赏析", "Generate AI commentary")).poemScript(script))
-                }
-                .font(typeface.accentFont)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(ClassicPalette.cinnabar, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(isGenerating)
-        }
-    }
-
     private func toggleFavorite() {
         if isFavorite {
             favoriteIDs.remove(poem.id)
@@ -803,28 +1030,6 @@ struct ClassicPoemDetailView: View {
             favoriteIDs.insert(poem.id)
         }
         ClassicPoemFavorites.save(favoriteIDs, including: poem)
-    }
-
-    @MainActor
-    private func generateAppreciation() async {
-        guard !isGenerating else { return }
-        guard hasPremiumAccess || PremiumAccess.freeAppreciationRemaining > 0 else {
-            paywallReason = .classicAppreciation
-            return
-        }
-        isGenerating = true
-        generationError = nil
-        do {
-            let text = try await BailianPoetryClient().generateClassicAppreciation(poem: poem, script: script)
-            aiAppreciation = text
-            ClassicAppreciationCache.save(text, for: poem.id)
-            _ = PremiumAccess.consumeAppreciationIfNeeded(hasPremiumAccess: hasPremiumAccess)
-        } catch BailianError.missingConfig {
-            generationError = AppLanguage.copy("AI 服务尚未配置，请稍后再试。", "AI is not configured. Try again later.")
-        } catch {
-            generationError = AppLanguage.copy("暂时无法生成赏析，请稍后再试。", "Unable to generate commentary right now. Try again later.")
-        }
-        isGenerating = false
     }
 }
 
@@ -838,7 +1043,8 @@ struct CircleToolbarButton: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(ClassicPalette.ink)
                 .frame(width: 36, height: 36)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(.white.opacity(0.88), in: Circle())
+                .overlay(Circle().stroke(ClassicPalette.mutedInk.opacity(0.12), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
@@ -849,7 +1055,6 @@ private struct DetailSection: View {
     @Environment(\.poemScript) private var script
     let title: String
     let text: String
-    var footnote: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -866,11 +1071,6 @@ private struct DetailSection: View {
                 .foregroundStyle(ClassicPalette.mutedInk)
                 .lineSpacing(8)
                 .textSelection(.enabled)
-            if let footnote {
-                Text(footnote.poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(ClassicPalette.mutedInk.opacity(0.7))
-            }
         }
     }
 }

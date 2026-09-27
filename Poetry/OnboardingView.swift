@@ -348,8 +348,7 @@ private struct OnboardingSealPage: View {
     @AppStorage("sealName") private var sealName = ""
     @AppStorage(NameTransliterator.overrideStorageKey) private var transliterationOverride = ""
     @State private var editingName = ""
-    @State private var aiSuggestions: [String] = []
-    @State private var isLoadingAI = false
+    @State private var suggestions: [String] = []
     @State private var shouldWarmKeyboard = false
     @FocusState private var nameFieldFocused: Bool
 
@@ -357,6 +356,16 @@ private struct OnboardingSealPage: View {
 
     /// Pre-built default names shown on first load
     private let defaultSuggestions = ["聽松居士", "半山散人", "夜雨書生"]
+
+    /// Offline pool for the dice button; users can always type their own.
+    private let penNamePool = [
+        "聽松居士", "半山散人", "夜雨書生",
+        "松間隱客", "雲水閒人", "青山居士",
+        "抱朴軒主", "枕流齋主", "梅溪釣叟",
+        "竹窗客", "漱玉山人", "觀瀾居士",
+        "樵歌唱晚", "臨池散人", "採薇山人",
+        "聽雪齋主", "滄浪釣客", "溪雲野鶴"
+    ]
 
     private var fullName: String {
         editingName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -425,27 +434,18 @@ private struct OnboardingSealPage: View {
                             // Dice / random button
                             Button {
                                 nameFieldFocused = false
-                                generatePenNames()
+                                suggestPenNames()
                             } label: {
-                                Group {
-                                    if isLoadingAI {
-                                        ProgressView()
-                                            .scaleEffect(0.7)
-                                            .tint(Color.cinnabar)
-                                    } else {
-                                        Image(systemName: "dice.fill")
-                                            .font(.system(size: 16))
+                                Image(systemName: "dice.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Color.cinnabar)
+                                    .frame(width: 40, height: 32)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 7)
+                                            .stroke(Color.cinnabar.opacity(0.6), lineWidth: 0.9)
                                     }
-                                }
-                                .foregroundStyle(Color.cinnabar)
-                                .frame(width: 40, height: 32)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 7)
-                                        .stroke(Color.cinnabar.opacity(0.6), lineWidth: 0.9)
-                                }
                             }
                             .buttonStyle(.plain)
-                            .disabled(isLoadingAI)
                             .accessibilityLabel(AppLanguage.copy("生成雅號", "Suggest a pen name"))
                         }
 
@@ -463,10 +463,10 @@ private struct OnboardingSealPage: View {
                     }
 
                     // Suggestion pills
-                    if !aiSuggestions.isEmpty {
+                    if !suggestions.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(aiSuggestions, id: \.self) { suggestion in
+                                ForEach(suggestions, id: \.self) { suggestion in
                                     Button {
                                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                             editingName = suggestion
@@ -503,10 +503,10 @@ private struct OnboardingSealPage: View {
                 let pick = defaultSuggestions.randomElement() ?? defaultSuggestions[0]
                 editingName = pick
                 sealName = pick
-                aiSuggestions = defaultSuggestions
+                suggestions = defaultSuggestions
             } else {
                 editingName = sealName
-                aiSuggestions = defaultSuggestions
+                suggestions = defaultSuggestions
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 shouldWarmKeyboard = true
@@ -583,38 +583,14 @@ private struct OnboardingSealPage: View {
         sealName = String(trimmed.prefix(hasCJK ? 4 : 24))
     }
 
-    private func generatePenNames() {
-        isLoadingAI = true
-        let client = BailianPoetryClient()
-        let currentName = editingName.isEmpty ? nil : editingName
-
-        Task {
-            do {
-                let names = try await client.generatePenNames(existingName: currentName)
-                await MainActor.run {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        aiSuggestions = names
-                        isLoadingAI = false
-                        // Auto-select the first AI suggestion
-                        if let first = names.first {
-                            editingName = first
-                            saveName()
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    let fallback = ["松間隱客", "雲水閒人", "青山居士"]
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        aiSuggestions = fallback
-                        isLoadingAI = false
-                        if let first = fallback.first {
-                            editingName = first
-                            saveName()
-                        }
-                    }
-                }
-            }
+    private func suggestPenNames() {
+        let current = fullName
+        let pick = penNamePool.filter { $0 != current }.randomElement() ?? current
+        let rest = penNamePool.filter { $0 != pick }.shuffled().prefix(5)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            suggestions = ([pick] + rest).shuffled()
+            editingName = pick
+            saveName()
         }
     }
 }

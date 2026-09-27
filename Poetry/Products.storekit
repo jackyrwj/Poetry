@@ -5,18 +5,18 @@
   ],
   "products" : [
     {
-      "displayPrice" : "198",
+      "displayPrice" : "29.99",
       "familyShareable" : false,
       "internalID" : "LIFETIME001",
       "localizations" : [
         {
-          "description" : "一次購買，永久解鎖所有功能",
-          "displayName" : "雅集・終身",
-          "locale" : "zh_CN"
+          "description" : "One payment for lifetime access.",
+          "displayName" : "Pro lifetime",
+          "locale" : "en_US"
         }
       ],
       "productID" : "com.raowenjie.Poetry.lifetime",
-      "referenceName" : "雅集・終身",
+      "referenceName" : "Pro lifetime",
       "type" : "NonConsumable"
     }
   ],
@@ -24,8 +24,8 @@
     "_applicationInternalID" : "6777856347",
     "_developerTeamID" : "9G5964XAXT",
     "_failTransactionsEnabled" : false,
-    "_locale" : "zh_CN",
-    "_storefront" : "CHN",
+    "_locale" : "en_US",
+    "_storefront" : "USA",
     "_storeKitErrors" : [
       {
         "current" : null,
@@ -80,7 +80,7 @@
       "localizations" : [
 
       ],
-      "name" : "雅集",
+      "name" : "Pro",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -89,27 +89,21 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "18",
+          "displayPrice" : "4.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "MONTHLY001",
-          "introductoryOffer" : {
-            "displayPrice" : "6",
-            "internalID" : "MONTHLY_INTRO",
-            "paymentMode" : "payAsYouGo",
-            "subscriptionPeriod" : "P1M",
-            "numberOfPeriods" : 1
-          },
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "不限生成、全部詩式字體朱印紙面",
-              "displayName" : "雅集・月度",
-              "locale" : "zh_CN"
+              "description" : "Unlimited poems and all Pro features.",
+              "displayName" : "Pro monthly",
+              "locale" : "en_US"
             }
           ],
           "productID" : "com.raowenjie.Poetry.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "雅集・月度",
+          "referenceName" : "Pro monthly",
           "subscriptionGroupID" : "21610293",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
@@ -123,21 +117,21 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "98",
+          "displayPrice" : "14.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "YEARLY001",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "不限生成、全部詩式字體朱印紙面，約 ¥8/月",
-              "displayName" : "雅集・年度",
-              "locale" : "zh_CN"
+              "description" : "All Pro features, billed yearly.",
+              "displayName" : "Pro yearly",
+              "locale" : "en_US"
             }
           ],
           "productID" : "com.raowenjie.Poetry.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "雅集・年度",
+          "referenceName" : "Pro yearly",
           "subscriptionGroupID" : "21610293",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

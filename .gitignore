@@ -23,3 +23,7 @@ AIConfig.plist
 *.png
 !Poetry/Assets.xcassets/**/*.png
 Poetry/Assets.xcassets/.imageset/
+
+# Local build artifacts / tooling state
+.asc/
+.poetry-preview-sim-udid

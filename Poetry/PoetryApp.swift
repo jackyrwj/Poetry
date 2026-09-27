@@ -49,7 +49,7 @@ private struct RootContentView: View {
             }
         }
         .sheet(isPresented: $showsOnboardingPaywall) {
-            PaywallView(reason: .membership) {
+            PaywallView {
                 showsOnboardingPaywall = false
             }
         }
@@ -89,11 +89,25 @@ private struct MainAppView: View {
                     Label(AppLanguage.copy("诗人", "Poets").poemScript(script), systemImage: "person.2")
                 }
 
-            SavedClassicPoemsView()
-                .tag(AppSection.saved)
-                .tabItem {
-                    Label(AppLanguage.copy("收藏", "Saved").poemScript(script), systemImage: "bookmark")
-                }
+            if AppLanguage.isEnglish {
+                SavedClassicPoemsView()
+                    .tag(AppSection.saved)
+                    .tabItem {
+                        Label("Saved", systemImage: "bookmark")
+                    }
+            } else {
+                PoemComposerView(isActive: selectedSection == .compose)
+                    .tag(AppSection.compose)
+                    .tabItem {
+                        Label("织诗".poemScript(script), systemImage: "wand.and.stars")
+                    }
+
+                PoemArchiveTabView()
+                    .tag(AppSection.archive)
+                    .tabItem {
+                        Label("藏诗".poemScript(script), systemImage: "books.vertical")
+                    }
+            }
         }
         .tint(Color(red: 0.77, green: 0.02, blue: 0.06))
         .environment(\.poemTypeface, typeface)
@@ -105,6 +119,8 @@ private enum AppSection: Hashable {
     case classics
     case poets
     case saved
+    case compose
+    case archive
 }
 
 /// The first English release follows the device's preferred language. The

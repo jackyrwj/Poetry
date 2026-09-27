@@ -404,12 +404,26 @@ struct SealTransliterationChips: View {
     let name: String
     @AppStorage(NameTransliterator.overrideStorageKey) private var storedOverride = ""
 
+    var overrideBinding: Binding<String>? = nil
+
+    private var selectedOverride: String {
+        overrideBinding?.wrappedValue ?? storedOverride
+    }
+
+    private func updateOverride(_ value: String) {
+        if let overrideBinding {
+            overrideBinding.wrappedValue = value
+        } else {
+            storedOverride = value
+        }
+    }
+
     var body: some View {
         guard let token = NameTransliterator.latinToken(for: name),
-              let glyphs = NameTransliterator.glyphs(for: name, storedOverride: storedOverride)
+              let glyphs = NameTransliterator.glyphs(for: name, storedOverride: selectedOverride)
         else { return AnyView(EmptyView()) }
 
-        let isOverridden = storedOverride.hasPrefix("\(token):")
+        let isOverridden = selectedOverride.hasPrefix("\(token):")
         return AnyView(
             HStack(spacing: 10) {
                 Text(AppLanguage.copy("印章漢字", "Your seal in Chinese"))
@@ -436,7 +450,7 @@ struct SealTransliterationChips: View {
 
                     if isOverridden {
                         Button {
-                            storedOverride = ""
+                            updateOverride("")
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 11, weight: .medium))
@@ -458,6 +472,6 @@ struct SealTransliterationChips: View {
         else { return }
         var values = glyphs.map(\.value)
         values[index] = options[(current + 1) % options.count]
-        storedOverride = NameTransliterator.overrideString(token: token, chars: values)
+        updateOverride(NameTransliterator.overrideString(token: token, chars: values))
     }
 }

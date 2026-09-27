@@ -5,6 +5,8 @@ struct ClassicPoem: Identifiable, Hashable, Codable, Sendable {
         case curated
         case tangShiThreeHundred
         case songCiThreeHundred
+        /// Retained only so poems saved by older builds (online search results)
+        /// still decode from the favorites archive; nothing new is created with it.
         case poetrySpring
     }
 
@@ -29,14 +31,19 @@ struct ClassicPoem: Identifiable, Hashable, Codable, Sendable {
     }
 
     var searchableText: String {
-        ([title, author, dynasty, form] + lines + tags).joined(separator: " ")
+        ([title, author, form] + lines + tags).joined(separator: " ")
+    }
+
+    /// Poems by the famous (curated) poets read for free; works from the
+    /// broader Tang/Song collections require membership.
+    var requiresMembership: Bool {
+        !ClassicPoetLibrary.isFamousAuthor(author)
     }
 }
 
 private struct EnglishClassicPoemContent {
     let title: String
     let author: String
-    let dynasty: String
     let form: String
     let translation: String
     let appreciation: String
@@ -64,16 +71,6 @@ extension ClassicPoem {
         return englishContent?.author ?? author.romanizedChinese
     }
 
-    var localizedDynasty: String {
-        guard AppLanguage.isEnglish else { return dynasty }
-        if let value = englishContent?.dynasty { return value }
-        switch dynasty {
-        case "唐": return "Tang dynasty"
-        case "宋": return "Song dynasty"
-        default: return dynasty.romanizedChinese
-        }
-    }
-
     var localizedForm: String {
         guard AppLanguage.isEnglish else { return form }
         if let value = englishContent?.form { return value }
@@ -92,18 +89,18 @@ extension ClassicPoem {
         }
     }
 
-    var localizedAttribution: String {
-        "\(localizedDynasty) · \(localizedAuthor) · \(localizedForm)"
-    }
-
     var localizedTranslation: String? {
-        guard AppLanguage.isEnglish else { return translation }
-        return englishContent?.translation ?? EnglishClassicPoemTranslationLibrary.value(for: id)
+        if AppLanguage.isEnglish {
+            return englishContent?.translation ?? EnglishClassicPoemTranslationLibrary.value(for: id)
+        }
+        return translation ?? ChineseClassicPoemTranslationLibrary.value(for: id)
     }
 
     var localizedAppreciation: String? {
-        guard AppLanguage.isEnglish else { return appreciation }
-        return englishContent?.appreciation ?? EnglishClassicPoemCommentaryLibrary.value(for: id)
+        if AppLanguage.isEnglish {
+            return englishContent?.appreciation ?? EnglishClassicPoemCommentaryLibrary.value(for: id)
+        }
+        return appreciation ?? ChineseClassicPoemCommentaryLibrary.value(for: id)
     }
 
     var localizedTags: [String] {
@@ -123,73 +120,73 @@ extension ClassicPoem {
 
     private static let englishCuratedContent: [String: EnglishClassicPoemContent] = [
         "curated-唐-李白-静夜思": .init(
-            title: "Quiet Night Thoughts", author: "Li Bai", dynasty: "Tang dynasty", form: "Five-character quatrain",
+            title: "Quiet Night Thoughts", author: "Li Bai", form: "Five-character quatrain",
             translation: "Before my bed, the moonlight shines—could it be frost upon the ground? I lift my head to watch the bright moon, then lower it and think of home.",
             appreciation: "The poem begins with cool moonlight and turns two ordinary gestures—looking up and looking down—into a sudden movement between distance and longing. Its plain language leaves a lasting hush.",
             tags: ["Moon", "Homesickness", "Night"]
         ),
         "curated-唐-孟浩然-春晓": .init(
-            title: "Spring Dawn", author: "Meng Haoran", dynasty: "Tang dynasty", form: "Five-character quatrain",
+            title: "Spring Dawn", author: "Meng Haoran", form: "Five-character quatrain",
             translation: "Sleeping deeply in spring, I did not notice dawn. Everywhere I hear birds calling. I remember the wind and rain last night—how many flowers must have fallen?",
             appreciation: "Instead of painting spring directly, the poem begins with waking and listening. Birdsong brings brightness, while the imagined fallen flowers add a delicate note of regret.",
             tags: ["Spring", "Flowers", "Passing time"]
         ),
         "curated-唐-王之涣-登鹳雀楼": .init(
-            title: "Ascending Stork Tower", author: "Wang Zhihuan", dynasty: "Tang dynasty", form: "Five-character quatrain",
+            title: "Ascending Stork Tower", author: "Wang Zhihuan", form: "Five-character quatrain",
             translation: "The sun sets against the mountains; the Yellow River flows into the sea. To see a thousand miles farther, climb one more storey.",
             appreciation: "The first couplet opens onto a vast landscape. The second turns that view into an invitation: physical ascent becomes a way of enlarging the mind.",
             tags: ["Ascent", "Yellow River", "Ambition"]
         ),
         "curated-唐-柳宗元-江雪": .init(
-            title: "River Snow", author: "Liu Zongyuan", dynasty: "Tang dynasty", form: "Five-character quatrain",
+            title: "River Snow", author: "Liu Zongyuan", form: "Five-character quatrain",
             translation: "From a thousand mountains, birds have vanished; on ten thousand paths, no human trace remains. In a lone boat, an old man in rain cape and bamboo hat fishes alone in the cold river snow.",
             appreciation: "The poem first empties the entire world, then narrows its gaze to one small boat. The solitary fisherman feels less like a scene of daily life than a portrait of inward resolve.",
             tags: ["Winter", "Solitude", "Snow"]
         ),
         "curated-唐-王维-竹里馆": .init(
-            title: "Bamboo Lodge", author: "Wang Wei", dynasty: "Tang dynasty", form: "Five-character quatrain",
+            title: "Bamboo Lodge", author: "Wang Wei", form: "Five-character quatrain",
             translation: "Alone in the deep bamboo grove, I play my zither and whistle at length. No one knows I am here in the forest; only the bright moon comes to shine upon me.",
             appreciation: "Bamboo, music, a whistle, and moonlight create a quiet world complete in itself. The speaker is alone but not bereft: the moon becomes a companion.",
             tags: ["Bamboo", "Moon", "Retreat"]
         ),
         "curated-唐-王维-山居秋暝": .init(
-            title: "Autumn Evening in the Mountains", author: "Wang Wei", dynasty: "Tang dynasty", form: "Five-character regulated verse",
+            title: "Autumn Evening in the Mountains", author: "Wang Wei", form: "Five-character regulated verse",
             translation: "After fresh rain, the empty mountain enters evening and autumn is in the air. Moonlight shines through pines; clear springs flow over stones. Voices rise from bamboo as women return from washing, and lotus leaves stir as fishing boats drift down. Let spring blossoms fade—this mountain is still a place to remain.",
             appreciation: "Stillness gives way to gentle movement: moonlight, water, voices, and boats. Natural clarity and ordinary human life meet in a quiet affirmation of retreat.",
             tags: ["Autumn", "Landscape", "Retreat"]
         ),
         "curated-唐-李白-望庐山瀑布": .init(
-            title: "Viewing the Waterfall at Mount Lu", author: "Li Bai", dynasty: "Tang dynasty", form: "Seven-character quatrain",
+            title: "Viewing the Waterfall at Mount Lu", author: "Li Bai", form: "Seven-character quatrain",
             translation: "Sunlight on Incense Burner Peak raises violet mist; from afar, the waterfall hangs before the river. Its flying torrent drops three thousand feet—perhaps the Milky Way has fallen from the ninth heaven.",
             appreciation: "Li Bai builds from violet haze to the vivid verb 'hang,' then lets the waterfall fall from heaven itself. The hyperbole carries real visual force.",
             tags: ["Waterfall", "Landscape", "Imagination"]
         ),
         "curated-唐-张继-枫桥夜泊": .init(
-            title: "Mooring by Maple Bridge at Night", author: "Zhang Ji", dynasty: "Tang dynasty", form: "Seven-character quatrain",
+            title: "Mooring by Maple Bridge at Night", author: "Zhang Ji", form: "Seven-character quatrain",
             translation: "The moon sets; crows cry; frost fills the sky. Facing riverside maples and fishing lights, I lie awake in sorrow. From Cold Mountain Temple beyond Suzhou, the midnight bell reaches the traveller's boat.",
             appreciation: "Moonset, crows, frost, maples, and fishing lights unfold one after another. The bell crossing the darkness makes homesickness almost audible.",
             tags: ["Journey", "Night", "Temple bell"]
         ),
         "curated-宋-苏轼-题西林壁": .init(
-            title: "Inscribed on the Wall of West Forest Temple", author: "Su Shi", dynasty: "Song dynasty", form: "Seven-character quatrain",
+            title: "Inscribed on the Wall of West Forest Temple", author: "Su Shi", form: "Seven-character quatrain",
             translation: "Seen head-on, Mount Lu is a range; from the side, a peak. Near or far, high or low, it is never the same. I cannot know its true face only because I am within the mountain itself.",
             appreciation: "The poem begins with shifting views of Mount Lu and reaches a wider insight: being inside a situation can prevent us from seeing the whole. Perspective shapes judgement.",
             tags: ["Mount Lu", "Perspective", "Insight"]
         ),
         "curated-宋-苏轼-饮湖上初晴后雨·其二": .init(
-            title: "West Lake: Clear After Rain, II", author: "Su Shi", dynasty: "Song dynasty", form: "Seven-character quatrain",
+            title: "West Lake: Clear After Rain, II", author: "Su Shi", form: "Seven-character quatrain",
             translation: "On a clear day, West Lake's waters glitter beautifully; in rain, the mountains are misty and marvellous too. If West Lake were compared to Xi Shi, light or rich adornment would suit her equally well.",
             appreciation: "Clear water and rain-veiled mountains reveal two faces of West Lake. The comparison to Xi Shi celebrates not simply beauty, but a beauty at home in every change of weather.",
             tags: ["West Lake", "Rain", "Landscape"]
         ),
         "curated-宋-李清照-如梦令·常记溪亭日暮": .init(
-            title: "Like a Dream: At the Creek Pavilion at Dusk", author: "Li Qingzhao", dynasty: "Song dynasty", form: "Ci lyric",
+            title: "Like a Dream: At the Creek Pavilion at Dusk", author: "Li Qingzhao", form: "Ci lyric",
             translation: "I often remember that dusk at the creek pavilion, so drunk I forgot the way home. Returning by boat after the pleasure had run its course, I drifted by mistake into deep lotus blooms. Row, row—startling a whole sandbank of gulls and egrets into flight.",
             appreciation: "A small outing at dusk moves from happy intoxication to a lively scramble of oars. The repeated cry to row and the sudden birds bring sound and motion to the lotus pond.",
             tags: ["Lotus", "Youth", "Excursion"]
         ),
         "curated-宋-陆游-卜算子·咏梅": .init(
-            title: "Divination Ode: Plum Blossom", author: "Lu You", dynasty: "Song dynasty", form: "Ci lyric",
+            title: "Divination Ode: Plum Blossom", author: "Lu You", form: "Ci lyric",
             translation: "By a broken bridge beyond the post station, a plum blossom opens alone, untended. Dusk already brings sorrow; wind and rain add more. It does not strive for spring's favour, though other flowers may envy it. Even ground into dust, its fragrance remains unchanged.",
             appreciation: "The plum blossom stands by a deserted bridge through dusk and storm without competing for attention. Its lasting fragrance becomes an image of integrity that survives hardship.",
             tags: ["Plum blossom", "Integrity", "Storm"]
@@ -260,6 +257,29 @@ enum EnglishClassicPoemCommentaryLibrary {
     }
 }
 
+private struct ChineseClassicPoemCommentaryResource: Decodable {
+    let commentaries: [String: String]
+}
+
+/// Chinese editorial notes for the offline Tang Poems Three Hundred and Song Lyrics Three Hundred collections.
+/// The resource is loaded once so the complete commentary library remains offline after installation.
+enum ChineseClassicPoemCommentaryLibrary {
+    private static let commentaries: [String: String] = {
+        guard
+            let url = Bundle.main.url(forResource: "ClassicPoemCommentary-zh", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let resource = try? JSONDecoder().decode(ChineseClassicPoemCommentaryResource.self, from: data)
+        else {
+            assertionFailure("ClassicPoemCommentary-zh.json is missing or invalid.")
+            return [:]
+        }
+        return resource.commentaries
+    }()
+
+    static func value(for poemID: String) -> String? {
+        commentaries[poemID]
+    }
+}
 /// English translations for the offline Tang Poems Three Hundred and Song Lyrics Three Hundred collections.
 /// The resource is loaded once so the complete translation library remains offline after installation.
 enum EnglishClassicPoemTranslationLibrary {
@@ -282,6 +302,31 @@ enum EnglishClassicPoemTranslationLibrary {
 
 private struct EnglishClassicPoemTranslationResource: Decodable {
     let translations: [String: String]
+}
+
+private struct ChineseClassicPoemTranslationResource: Decodable {
+    let translations: [String: String]
+}
+
+/// Modern Chinese translations for the offline Tang Poems Three Hundred and Song Lyrics Three Hundred collections,
+/// so Chinese readers get a plain-language rendering of the classical text just as English readers do.
+/// The resource is loaded once so the complete translation library remains offline after installation.
+enum ChineseClassicPoemTranslationLibrary {
+    private static let translations: [String: String] = {
+        guard
+            let url = Bundle.main.url(forResource: "ClassicPoemTranslation-zh", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let resource = try? JSONDecoder().decode(ChineseClassicPoemTranslationResource.self, from: data)
+        else {
+            assertionFailure("ClassicPoemTranslation-zh.json is missing or invalid.")
+            return [:]
+        }
+        return resource.translations
+    }()
+
+    static func value(for poemID: String) -> String? {
+        translations[poemID]
+    }
 }
 
 enum ClassicPoemLibrary {
@@ -381,13 +426,25 @@ enum ClassicPoemLibrary {
         return selected.filter { $0.searchableText.localizedCaseInsensitiveContains(key) }
     }
 
-    /// Keeps the existing hand-curated entries first, then fills out the selection with Tang Poems Three Hundred.
-    /// Curated versions win when the same title and author appear in both sources.
+    /// All poems across the curated selection and the offline Tang Poems Three
+    /// Hundred and Song Lyrics Three Hundred collections. Only exact id
+    /// duplicates are removed within the collections (different poems may share
+    /// a title and author); a collection poem that duplicates a curated poem by
+    /// title + author is replaced by the curated version, which carries the
+    /// richer commentary and English content.
     private static var mergedSelectedPoems: [ClassicPoem] {
-        var seen = Set<String>()
-        return (featured + TangShiThreeHundredLibrary.poems).filter { poem in
-            seen.insert("\(poem.title.poemScript(.simplified))|\(poem.author.poemScript(.simplified))").inserted
+        let curated = featured
+        let curatedKeys = Set(featured.map(dedupKey))
+        var seenIDs = Set<String>()
+        let collections = (TangShiThreeHundredLibrary.poems + SongCiThreeHundredLibrary.poems).filter { poem in
+            guard seenIDs.insert(poem.id).inserted else { return false }
+            return !curatedKeys.contains(dedupKey(poem))
         }
+        return curated + collections
+    }
+
+    private static func dedupKey(_ poem: ClassicPoem) -> String {
+        "\(poem.title.poemScript(.simplified))|\(poem.author.poemScript(.simplified))"
     }
 
     private static func poem(
@@ -443,32 +500,5 @@ enum ClassicPoemFavorites {
         poems = poems.filter { ids.contains($0.key) }
         guard let data = try? JSONEncoder().encode(Array(poems.values)) else { return }
         UserDefaults.standard.set(data, forKey: poemsKey)
-    }
-}
-
-enum ClassicAppreciationCache {
-    private static let key = "classicPoemAIAppreciations"
-
-    static func value(for poemID: String) -> String? {
-        let values = load()
-        let languageKey = "\(AppLanguage.isEnglish ? "en" : "zh"):\(poemID)"
-        if let value = values[languageKey] { return value }
-        // Older builds stored unqualified Chinese commentary by poem ID.
-        return AppLanguage.isEnglish ? nil : values[poemID]
-    }
-
-    static func save(_ text: String, for poemID: String) {
-        var values = load()
-        values["\(AppLanguage.isEnglish ? "en" : "zh"):\(poemID)"] = text
-        guard let data = try? JSONEncoder().encode(values) else { return }
-        UserDefaults.standard.set(data, forKey: key)
-    }
-
-    private static func load() -> [String: String] {
-        guard
-            let data = UserDefaults.standard.data(forKey: key),
-            let values = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return values
     }
 }
