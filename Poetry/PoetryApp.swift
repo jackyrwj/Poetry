@@ -18,32 +18,27 @@ struct PoetryApp: App {
 
 private struct RootContentView: View {
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
-    @State private var showsSplash = true
     @State private var showsOnboardingPaywall = false
 
     var body: some View {
         ZStack {
-            if showsSplash {
-                AppSplashView()
-                    .transition(.opacity)
-                    .zIndex(1)
+            // The onboarding pages demo composing, sealing and sharing, which only
+            // exist in the Chinese app, so English readers go straight to reading.
+            if hasSeenOnboarding || AppLanguage.isEnglish {
+                MainAppView()
             } else {
-                if hasSeenOnboarding {
-                    MainAppView()
-                } else {
-                    OnboardingView {
-                        withAnimation(.easeOut(duration: 0.4)) {
-                            hasSeenOnboarding = true
-                        }
+                OnboardingView {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        hasSeenOnboarding = true
+                    }
 
-                        // Refresh entitlements before deciding whether to present. A
-                        // returning member can otherwise see the paywall briefly while
-                        // StoreKit is still resolving their existing purchase.
-                        Task { @MainActor in
-                            await StoreManager.shared.refreshPurchaseStatus()
-                            guard !StoreManager.shared.isPremium else { return }
-                            showsOnboardingPaywall = true
-                        }
+                    // Refresh entitlements before deciding whether to present. A
+                    // returning member can otherwise see the paywall briefly while
+                    // StoreKit is still resolving their existing purchase.
+                    Task { @MainActor in
+                        await StoreManager.shared.refreshPurchaseStatus()
+                        guard !StoreManager.shared.isPremium else { return }
+                        showsOnboardingPaywall = true
                     }
                 }
             }
@@ -51,12 +46,6 @@ private struct RootContentView: View {
         .sheet(isPresented: $showsOnboardingPaywall) {
             PaywallView {
                 showsOnboardingPaywall = false
-            }
-        }
-        .task {
-            try? await Task.sleep(nanoseconds: 850_000_000)
-            withAnimation(.easeOut(duration: 0.28)) {
-                showsSplash = false
             }
         }
     }
@@ -96,7 +85,10 @@ private struct MainAppView: View {
                         Label("Saved", systemImage: "bookmark")
                     }
             } else {
-                PoemComposerView(isActive: selectedSection == .compose)
+                PoemComposerView(
+                    isActive: selectedSection == .compose,
+                    onOpenArchive: { selectedSection = .archive }
+                )
                     .tag(AppSection.compose)
                     .tabItem {
                         Label("织诗".poemScript(script), systemImage: "wand.and.stars")
@@ -123,72 +115,15 @@ private enum AppSection: Hashable {
     case archive
 }
 
-/// The first English release follows the device's preferred language. The
-/// underlying poems remain in Chinese so that their original form is intact.
+/// Follows the localization iOS picked for the bundle, so the in-app copy always
+/// matches the home screen name. Chinese variants resolve to zh-Hans / zh-Hant;
+/// every other language falls back to English. The underlying poems remain in
+/// Chinese so that their original form is intact.
 enum AppLanguage {
-    static var isEnglish: Bool {
-        Locale.preferredLanguages.first?.lowercased().hasPrefix("en") == true
-    }
+    static let isEnglish: Bool =
+        Bundle.main.preferredLocalizations.first?.lowercased().hasPrefix("en") == true
 
     static func copy(_ chinese: String, _ english: String) -> String {
         isEnglish ? english : chinese
-    }
-}
-
-private struct AppSplashView: View {
-    var body: some View {
-        ZStack {
-            Color(red: 0.96, green: 0.93, blue: 0.86)
-                .ignoresSafeArea()
-
-            VStack(spacing: 18) {
-                AppIconImage()
-                    .frame(width: 96, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 10)
-
-                Text(AppLanguage.copy("织诗", "Woven Verse"))
-                    .font(AppLanguage.isEnglish
-                        ? .system(size: 28, weight: .medium, design: .serif)
-                        : .custom("HuiwenMincho", size: 28))
-                    .foregroundStyle(Color(red: 0.18, green: 0.14, blue: 0.10))
-                    .tracking(AppLanguage.isEnglish ? 0.5 : 4)
-            }
-        }
-    }
-}
-
-private struct AppIconImage: View {
-    var body: some View {
-        if let image = Self.appIcon {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-        } else {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(red: 0.60, green: 0.08, blue: 0.06))
-                .overlay {
-                    Text("诗")
-                        .font(.custom("FZXiaoZhuanTi", size: 46))
-                        .foregroundStyle(.white)
-                }
-        }
-    }
-
-    private static var appIcon: UIImage? {
-        if let image = UIImage(named: "AppIcon") {
-            return image
-        }
-
-        guard
-            let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
-            let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
-            let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
-            let iconName = iconFiles.last
-        else {
-            return nil
-        }
-
-        return UIImage(named: iconName)
     }
 }

@@ -84,7 +84,7 @@ struct PaywallView: View {
                             Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
                                 .font(typeface.titleFont)
                                 .foregroundStyle(Color.ink)
-                            Text(AppLanguage.copy("開通雅集，不限次數創作古詩，閱讀全部已收錄詩詞與詩人，解鎖更多創作樣式。", "Create unlimited classical Chinese poems, explore all included poems and poets, and unlock premium styles.").poemScript(script))
+                            Text(AppLanguage.copy("開通雅集，不限次數創作古詩，閱讀全部已收錄詩詞與詩人，解鎖更多創作樣式。", "Read every poem and meet every poet in the collection.").poemScript(script))
                                 .font(typeface.smallFont)
                                 .foregroundStyle(Color.mutedInk)
                         }
@@ -1301,7 +1301,8 @@ extension ShareArtworkStyle {
 
     static func normalizedSealName(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(trimmed.prefix(trimmed.contains(where: { $0.isCJK }) ? 4 : 24))
+        guard trimmed.contains(where: { $0.isCJK }) else { return String(trimmed.prefix(24)) }
+        return String(NameTransliterator.rawSealText(trimmed).prefix(4))
     }
 }
 
@@ -2698,7 +2699,7 @@ struct SealStampView: View {
         if let glyphs = NameTransliterator.glyphs(for: name, storedOverride: transliterationOverrideValue ?? transliterationOverride) {
             return glyphs.map(\.value)
         }
-        let chars = Array(Self.simplifiedSealText(name)).map(String.init)
+        let chars = Array(Self.simplifiedSealText(NameTransliterator.rawSealText(name))).map(String.init)
         return Array(chars.prefix(4))
     }
 

@@ -372,7 +372,7 @@ private struct OnboardingSealPage: View {
     }
 
     private var previewName: String {
-        String(fullName.prefix(4))
+        String(NameTransliterator.rawSealText(fullName).prefix(4))
     }
 
     private var sealChars: [String] {

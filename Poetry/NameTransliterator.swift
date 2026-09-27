@@ -33,31 +33,54 @@ enum NameTransliterator {
 
     // MARK: - Public API
 
-    /// The lowercase alphanumeric first token of `name`, or nil if the name has no Latin letters.
+    /// The lowercase Latin name key (all words joined by a space), or nil if the name has no Latin letters.
     static func latinToken(for name: String) -> String? {
-        guard let token = name
-            .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "'" || $0 == "_" })
-            .map({ $0.filter(\.isLetter) })
-            .first(where: { !$0.isEmpty && $0.contains(where: { $0.isASCII && $0.isLetter }) })
-        else { return nil }
-        let lowercased = token.lowercased()
-        // Names already in Chinese (or other scripts) are stamped as-is.
-        guard !lowercased.contains(where: { !$0.isLetter || !$0.isASCII }) else { return nil }
-        return lowercased
+        latinTokens(for: name)?.joined(separator: " ")
     }
 
-    /// Seal glyphs for a Latin name, honoring a stored per-token override.
+    /// Lowercase Latin words of `name`, or nil when the name should be stamped as entered.
+    private static func latinTokens(for name: String) -> [String]? {
+        // Any Chinese in the name means the user gave their Chinese name: stamp it directly.
+        guard !name.contains(where: \.isCJK) else { return nil }
+        let tokens = name
+            .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "'" || $0 == "_" })
+            .map { String($0.filter(\.isLetter)).lowercased() }
+            .filter { $0.contains(where: { $0.isASCII && $0.isLetter }) }
+        // Names already in Chinese (or other scripts) are stamped as-is.
+        guard let first = tokens.first, first.allSatisfy(\.isASCII) else { return nil }
+        return tokens.filter { $0.allSatisfy(\.isASCII) }
+    }
+
+    /// Seal glyphs for a Latin name, honoring a stored per-name override.
     /// Returns nil when the name should be stamped as entered (e.g. already Chinese).
     static func glyphs(for name: String, storedOverride: String) -> [Glyph]? {
-        guard let token = latinToken(for: name) else { return nil }
+        guard let tokens = latinTokens(for: name) else { return nil }
+        let key = tokens.joined(separator: " ")
 
-        if let override = parseOverride(storedOverride), override.token == token {
+        if let override = parseOverride(storedOverride), override.token == key {
             return makeGlyphs(String(override.chars.prefix(4)))
         }
 
-        let chars = dictionary[token] ?? syllableTransliteration(of: token)
+        // Always stamp the first word; add later words only while the whole word
+        // still fits in the four-character seal ("Mary Jane" → 玛丽简, "Li Bai" → 莉拜).
+        var chars = transliterate(tokens[0])
+        for token in tokens.dropFirst() {
+            let next = transliterate(token)
+            guard !next.isEmpty, chars.count + next.count <= 4 else { break }
+            chars += next
+        }
         guard !chars.isEmpty else { return nil }
         return makeGlyphs(String(chars.prefix(4)))
+    }
+
+    /// Text stamped as entered: only the Chinese characters when there are any
+    /// ("Jacky 饶" → 饶), and whitespace never occupies a seal cell.
+    static func rawSealText(_ name: String) -> String {
+        name.contains(where: \.isCJK) ? name.filter(\.isCJK) : name.filter { !$0.isWhitespace }
+    }
+
+    private static func transliterate(_ token: String) -> String {
+        dictionary[token] ?? syllableTransliteration(of: token)
     }
 
     /// Serializes an override as "token:chars".
@@ -120,7 +143,7 @@ enum NameTransliterator {
         let clusterChar = clusterTable[cluster] ?? initialTable[leading.first.map(String.init) ?? ""]
         guard !rest.isEmpty else { return clusterChar ?? "" }
         let restChar = syllableTable[String(rest)] ?? vowelTable[String(rest)]
-            ?? rest.first.map(String.init) ?? ""
+            ?? rest.first.flatMap { vowelTable[String($0)] } ?? "" // never leak Latin letters into the seal
         return (clusterChar ?? "") + restChar
     }
 
@@ -190,7 +213,7 @@ enum NameTransliterator {
         "howard": "霍华德", "hugh": "休", "ian": "伊恩", "ida": "艾达",
         "ignacio": "伊格纳西奥", "imogen": "伊莫金", "ina": "伊娜", "ingrid": "英格丽德",
         "irene": "艾琳", "iris": "艾里斯", "irma": "厄玛", "isaac": "艾萨克",
-        "isabel": "伊莎贝尔", "isabella": "伊莎贝拉", "ivan": "伊万", "jack": "杰克",
+        "isabel": "伊莎贝尔", "isabella": "伊莎贝拉", "ivan": "伊万", "jack": "杰克", "jackie": "杰基", "jacky": "杰基",
         "jacob": "雅各布", "jacqueline": "杰奎琳", "jade": "贾德", "jake": "杰克",
         "james": "詹姆斯", "jamie": "杰米", "jane": "简", "janet": "珍妮特",
         "janice": "贾尼丝", "jared": "贾里德", "jasmine": "贾丝明", "jason": "贾森",
@@ -343,6 +366,7 @@ enum NameTransliterator {
         "a": "阿", "e": "厄", "i": "伊", "o": "奥", "u": "乌",
         "an": "安", "en": "恩", "in": "因", "on": "翁", "un": "温",
         "ang": "昂", "ing": "英", "ong": "翁",
+        "ai": "艾", "ao": "奥", "au": "奥", "ei": "伊", "ou": "欧",
     ]
 
     /// Alternate characters a user can cycle to while refining their seal (keyed by primary char).

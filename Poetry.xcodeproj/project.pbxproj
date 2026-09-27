@@ -63,6 +63,8 @@
 		357EF1E8CDF2B9C5C7D31AD4 /* liu_shui.m4a */ = {isa = PBXFileReference; path = liu_shui.m4a; sourceTree = "<group>"; };
 		38169F15687762495105F54C /* pei_lan.m4a */ = {isa = PBXFileReference; path = pei_lan.m4a; sourceTree = "<group>"; };
 		3BD36889E72BE5CC87689B14 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A1C0DE0000000000000000A1 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		A1C0DE0000000000000000A2 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		3D5718A6538BE050FDF17F69 /* PoetGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetGalleryView.swift; sourceTree = "<group>"; };
 		4504E3EDE22DFD3867CA163A /* Poetry.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Poetry.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48F2B781FE1CC7A124258630 /* ClassicPoemTranslation-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemTranslation-en.json"; sourceTree = "<group>"; };
@@ -223,6 +225,8 @@
 			knownRegions = (
 				Base,
 				en,
+				"zh-Hans",
+				"zh-Hant",
 			);
 			mainGroup = 513312DA7977AE798064545E;
 			minimizedProjectReferenceProxies = 1;
@@ -302,6 +306,8 @@
 			isa = PBXVariantGroup;
 			children = (
 				3BD36889E72BE5CC87689B14 /* en */,
+				A1C0DE0000000000000000A1 /* zh-Hans */,
+				A1C0DE0000000000000000A2 /* zh-Hant */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -377,7 +383,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -396,7 +402,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

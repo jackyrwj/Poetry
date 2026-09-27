@@ -71,7 +71,7 @@ struct ClassicPoetryView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         header
-                        if selectedScope != .favorites && normalizedQuery.isEmpty,
+                        if normalizedQuery.isEmpty,
                            let dailyPoem = DailyPoemPicker.poem(on: dailyDate) {
                             DailyPoemCard(poem: dailyPoem, date: dailyDate, onOpenPoem: openPoem)
                         }

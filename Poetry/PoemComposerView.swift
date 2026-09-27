@@ -16,6 +16,7 @@ struct PoemComposerView: View {
     /// A completed poem belongs in the archive. When the user returns to this tab,
     /// start a fresh composing session rather than replaying the completion reveal.
     var isActive: Bool = true
+    var onOpenArchive: () -> Void = {}
 
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
     @AppStorage(PoemScript.storageKey) private var scriptRawValue = PoemScript.simplified.rawValue
@@ -47,6 +48,7 @@ struct PoemComposerView: View {
     @State private var showsPaywall = false
     @State private var selectedPoemForPreview: SavedPoem?
     @State private var hasCompletedCurrentPoem = false
+    @State private var currentSavedPoem: SavedPoem?
 
     private var poemForm: PoemFormSpec {
         PoemFormSpec(
@@ -114,6 +116,13 @@ struct PoemComposerView: View {
                     image: selectedImage,
                     lines: selectedLines,
                     onReviseLine: { index in
+                        // The finished poem was auto-saved; drop it so the
+                        // revised version replaces it instead of duplicating.
+                        if let currentSavedPoem {
+                            savedPoems = PoemArchiveStore.delete(currentSavedPoem)
+                            self.currentSavedPoem = nil
+                        }
+                        hasCompletedCurrentPoem = false
                         let safeIndex = min(max(index, 0), selectedLines.count)
                         currentLineIndex = safeIndex
                         selectedLines = Array(selectedLines.prefix(safeIndex))
@@ -121,7 +130,13 @@ struct PoemComposerView: View {
                     },
                     onSave: { poem in
                         savedPoems = PoemArchiveStore.save(poem)
+                        currentSavedPoem = poem
                         hasCompletedCurrentPoem = true
+                    },
+                    onOpenArchive: {
+                        // The composer resets itself when this tab becomes active again.
+                        onOpenArchive()
+                        requestReviewAfterFirstPoemIfNeeded()
                     },
                     onRestart: {
                         returnHomeFromFinishedPoem()
@@ -260,6 +275,7 @@ struct PoemComposerView: View {
         )
 
         savedPoems = PoemArchiveStore.save(poem)
+        currentSavedPoem = poem
         hasCompletedCurrentPoem = true
     }
 
@@ -273,6 +289,7 @@ struct PoemComposerView: View {
         isRefreshingImages = false
         savedPoems = PoemArchiveStore.load()
         hasCompletedCurrentPoem = false
+        currentSavedPoem = nil
         stage = .heart
     }
 
@@ -1610,14 +1627,20 @@ private struct SelfWriteSheet: View {
                             let char = i < cleanText.count
                                 ? String(cleanText[cleanText.index(cleanText.startIndex, offsetBy: i)])
                                 : ""
+                            let isCaretBox = isFocused && i == cleanText.count
                             Text(char)
                                 .font(typeface.font(size: fontSize))
                                 .foregroundStyle(Color.ink)
                                 .frame(width: boxSize, height: boxSize)
+                                .overlay {
+                                    if isCaretBox {
+                                        BlinkingCaret(height: fontSize)
+                                    }
+                                }
                                 .background(
                                     RoundedRectangle(cornerRadius: 4)
                                         .stroke(
-                                            i < cleanText.count ? Color.cinnabar.opacity(0.5) : Color.mutedInk.opacity(0.2),
+                                            i < cleanText.count || isCaretBox ? Color.cinnabar.opacity(0.5) : Color.mutedInk.opacity(0.2),
                                             lineWidth: i < cleanText.count ? 1.2 : 0.8
                                         )
                                 )
@@ -1678,6 +1701,24 @@ private struct SelfWriteSheet: View {
                 text = String(cjk.prefix(charCount))
             }
         }
+    }
+}
+
+/// A thin cinnabar caret that blinks like a system text cursor; stays solid when Reduce Motion is on.
+private struct BlinkingCaret: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let height: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.53)) { context in
+            let visible = reduceMotion
+                || Int(context.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
+            Capsule()
+                .fill(Color.cinnabar)
+                .frame(width: 1.5, height: height)
+                .opacity(visible ? 1 : 0)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -1814,13 +1855,13 @@ private struct FinishedPoemView: View {
     let lines: [String]
     let onReviseLine: (Int) -> Void
     let onSave: (SavedPoem) -> Void
+    let onOpenArchive: () -> Void
     let onRestart: () -> Void
     @State private var revealedChars = 0
     @State private var showSeal = false
     @State private var showActions = false
     @State private var isRevisingPoem = false
     @State private var isSaved = false
-    @State private var showsSharePreview = false
 
     private func charsForLine(_ lineIndex: Int) -> Int {
         var charsBefore = 0
@@ -1897,10 +1938,14 @@ private struct FinishedPoemView: View {
 
                 HStack(spacing: 30) {
                     SealButton(
-                        title: AppLanguage.copy("分享", "Share"),
+                        title: isRevisingPoem ? AppLanguage.copy("取消", "Cancel") : AppLanguage.copy("修改", "Edit"),
+                        isSelected: !isRevisingPoem,
+                        action: { isRevisingPoem.toggle() }
+                    )
+                    SealButton(
+                        title: AppLanguage.copy("保存", "Save"),
                         isSelected: true,
-                        spotlightStep: .tapShare,
-                        action: { showsSharePreview = true }
+                        action: onOpenArchive
                     )
                     SealButton(
                         title: AppLanguage.copy("首页", "Home"),
@@ -1925,16 +1970,7 @@ private struct FinishedPoemView: View {
         .task(id: lines.joined(separator: "|")) {
             await revealPoem()
         }
-        .fullScreenCover(isPresented: $showsSharePreview) {
-            PoemSharePreviewView(
-                imageTitle: image.title,
-                lines: lines,
-                locationMark: locationMark,
-                lunarDateText: PoemInscriptionDate.current.lunarDateText,
-                dayPeriodText: PoemInscriptionDate.current.dayPeriodText
-            )
-        }
-        .spotlightOverlay(for: [.tapShare, .returnHome])
+        .spotlightOverlay(for: [.returnHome])
     }
 
     private func revealPoem() async {
@@ -3195,11 +3231,19 @@ private struct SavedPoemDetailView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            // Separate items (plus a spacer on iOS 26) so Liquid Glass renders
+            // two distinct buttons instead of merging them into one capsule.
+            ToolbarItem(placement: .topBarTrailing) {
                 QuietBackButton(title: AppLanguage.copy("編輯", "Edit")) {
                     showsEditor = true
                 }
+            }
 
+            if #available(iOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
                 QuietBackButton(title: "分享") {
                     showsSharePreview = true
                 }
@@ -3265,7 +3309,7 @@ private struct SealStampView: View {
         if let glyphs = NameTransliterator.glyphs(for: name, storedOverride: transliterationOverride) {
             return glyphs.map(\.value)
         }
-        let chars = Array(Self.simplifiedSealText(name)).map(String.init)
+        let chars = Array(Self.simplifiedSealText(NameTransliterator.rawSealText(name))).map(String.init)
         return Array(chars.prefix(4))
     }
 
