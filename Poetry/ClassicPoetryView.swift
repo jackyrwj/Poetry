@@ -4,6 +4,8 @@ import UIKit
 struct ClassicPoetryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Binding var pendingPoemID: String?
+    /// Set by the 秋日诗会 event deep link.
+    @Binding var opensAutumnGathering: Bool
     @State private var dailyDate = Date.now
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
     @AppStorage(PoemScript.storageKey) private var scriptRawValue = PoemScript.simplified.rawValue
@@ -21,8 +23,9 @@ struct ClassicPoetryView: View {
 
     private static let searchFieldID = "classicSearchField"
 
-    init(pendingPoemID: Binding<String?> = .constant(nil)) {
+    init(pendingPoemID: Binding<String?> = .constant(nil), opensAutumnGathering: Binding<Bool> = .constant(false)) {
         _pendingPoemID = pendingPoemID
+        _opensAutumnGathering = opensAutumnGathering
         _displayedPoems = State(initialValue: Self.results(for: SearchRequest(
             query: "",
             scope: .all,
@@ -127,6 +130,11 @@ struct ClassicPoetryView: View {
                             if let dailyPoem = DailyPoemPicker.poem(on: dailyDate) {
                                 DailyPoemCard(poem: dailyPoem, date: dailyDate, onOpenPoem: openPoem)
                             }
+                            if AutumnGathering.isActive(on: dailyDate), !AutumnGathering.poems.isEmpty {
+                                AutumnGatheringCard {
+                                    path.append(.autumnGathering)
+                                }
+                            }
                             ClassicSearchField(text: $query, isFocused: $isSearchFocused)
                                 .id(Self.searchFieldID)
                             collectionPicker
@@ -198,6 +206,12 @@ struct ClassicPoetryView: View {
         .onChange(of: pendingPoemID, initial: true) { _, _ in
             openPendingPoem()
         }
+        .onChange(of: opensAutumnGathering, initial: true) { _, opens in
+            guard opens else { return }
+            opensAutumnGathering = false
+            guard AutumnGathering.isActive() else { return }
+            path = [.autumnGathering]
+        }
         .onChange(of: path.isEmpty) { _, isEmpty in
             if isEmpty { offerWidgetGuideIfNeeded() }
         }
@@ -229,7 +243,7 @@ struct ClassicPoetryView: View {
         Task { @MainActor in
             guard !(await WidgetGuide.isInstalled()) else { return }
             try? await Task.sleep(for: delay)
-            guard scenePhase == .active, path.isEmpty, pendingPoemID == nil,
+            guard scenePhase == .active, path.isEmpty, pendingPoemID == nil, !opensAutumnGathering,
                   !showsPaywall, !showsWidgetGuide, WidgetGuide.canPrompt else { return }
             WidgetGuide.recordPrompt()
             showsWidgetGuide = true
@@ -408,6 +422,8 @@ struct PoetRouteDestination: View {
             SavedClassicPoemsList(favoriteIDs: $favoriteIDs, path: $path, isPushed: true)
         case .savedPoets:
             SavedPoetsView(path: $path)
+        case .autumnGathering:
+            AutumnGatheringView(favoriteIDs: $favoriteIDs, path: $path)
         }
     }
 }

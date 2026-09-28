@@ -21,7 +21,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.raowenjie.Poetry
         MARKETING_VERSION: 1.5
-        CURRENT_PROJECT_VERSION: 12
+        CURRENT_PROJECT_VERSION: 13
         INFOPLIST_FILE: Poetry/Info.plist
         CODE_SIGN_ENTITLEMENTS: Poetry/Poetry.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -36,7 +36,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.raowenjie.Poetry.PoetryWidget
         MARKETING_VERSION: 1.5
-        CURRENT_PROJECT_VERSION: 12
+        CURRENT_PROJECT_VERSION: 13
         INFOPLIST_FILE: PoetryWidget/Info.plist
         CODE_SIGN_ENTITLEMENTS: PoetryWidget/PoetryWidget.entitlements
         DEVELOPMENT_TEAM: 9G5964XAXT

@@ -76,9 +76,9 @@ enum PoemBackground: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     static let storageKey = "poem_background"
-    /// 素紙 is the default in both languages: the reader's own verse is the
-    /// subject, and a painting is something they choose.
-    static let defaultBackground: PoemBackground = .none
+    /// 渡舟 is the default in both languages: a free painting, so a new poem
+    /// never starts on bare paper. 無 remains available in the pickers.
+    static let defaultBackground: PoemBackground = .boat
 
     var displayName: String {
         switch self {

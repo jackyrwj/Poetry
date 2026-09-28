@@ -47,6 +47,7 @@
 		9A44FDADE25E0628F21C0648 /* DailyPoemWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49E2240304E164B2ECE1994 /* DailyPoemWidgetView.swift */; };
 		9B8AC109A6DBAB19E23BCF91 /* AppFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAF8CDB41FB9084E68C5740 /* AppFeedback.swift */; };
 		A21E34300F0DBA31CBC6D5C7 /* FZXiaoZhuanTi.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7B787452B0D5C00532F94190 /* FZXiaoZhuanTi.ttf */; };
+		A88E36F1F3922AA80E02DCF4 /* AutumnGathering.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB10B668A33283557A7E7384 /* AutumnGathering.swift */; };
 		B15D3CBF62A6D17DE550784E /* DappledShadowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52100786748C874758414C79 /* DappledShadowView.swift */; };
 		B5A95ED9D07DE734785ED137 /* AIConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */; };
 		BC7128819E3BF834D3DBE661 /* ClassicPoemTranslation-zh.json in Resources */ = {isa = PBXBuildFile; fileRef = FC1E8E23F7EFAC1C842EA2AC /* ClassicPoemTranslation-zh.json */; };
@@ -131,6 +132,7 @@
 		C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = AIConfig.plist; sourceTree = "<group>"; };
 		C9C73057A8AA2B1B55459E97 /* ClassicPoemTitle-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemTitle-en.json"; sourceTree = "<group>"; };
 		CA6DB34609A19BC734151A64 /* DailyPoemWidgetSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPoemWidgetSync.swift; sourceTree = "<group>"; };
+		CB10B668A33283557A7E7384 /* AutumnGathering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutumnGathering.swift; sourceTree = "<group>"; };
 		CF022F287632A87217A8F61E /* LXGWWenKaiLite-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "LXGWWenKaiLite-Regular.ttf"; sourceTree = "<group>"; };
 		D619870C6CB51294CC3E0C81 /* PoetryWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PoetryWidget.entitlements; sourceTree = "<group>"; };
 		D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemCommentary-en.json"; sourceTree = "<group>"; };
@@ -216,6 +218,7 @@
 				C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */,
 				5CAF8CDB41FB9084E68C5740 /* AppFeedback.swift */,
 				F62C30408E552A0B41C6FF95 /* Assets.xcassets */,
+				CB10B668A33283557A7E7384 /* AutumnGathering.swift */,
 				DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */,
 				FAC451B10B428A2F1989BC39 /* ClassicPoem.swift */,
 				D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */,
@@ -411,6 +414,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B8AC109A6DBAB19E23BCF91 /* AppFeedback.swift in Sources */,
+				A88E36F1F3922AA80E02DCF4 /* AutumnGathering.swift in Sources */,
 				D48EDBAA8809DB7764E613A6 /* BailianPoetryClient.swift in Sources */,
 				195BEC16D6D930F582E4C06E /* ClassicPoem.swift in Sources */,
 				577E4C177BB4F8FF570BC57E /* ClassicPoet.swift in Sources */,
@@ -483,7 +487,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PoetryWidget/PoetryWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = PoetryWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -568,7 +572,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Poetry/Poetry.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -586,7 +590,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PoetryWidget/PoetryWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = PoetryWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -608,7 +612,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Poetry/Poetry.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

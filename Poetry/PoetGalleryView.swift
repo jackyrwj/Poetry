@@ -9,12 +9,14 @@ enum PoetRoute: Hashable {
     case savedPoems
     /// Poets the reader has saved, pushed from the 诗人 header.
     case savedPoets
+    /// 秋日诗会, pushed from its card on 赏诗 or the event deep link.
+    case autumnGathering
 
     /// Everything pushed above one of these belongs to a saved collection.
     var isSavedCollection: Bool {
         switch self {
         case .savedPoem, .savedPoems, .savedPoets: true
-        case .poet, .poem: false
+        case .poet, .poem, .autumnGathering: false
         }
     }
 }

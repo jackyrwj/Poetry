@@ -62,6 +62,8 @@ private struct MainAppView: View {
     @State private var composePath = NavigationPath()
     /// Set by a tap on the 每日一首 widget; the Read tab opens that poem.
     @State private var pendingPoemID: String?
+    /// Set by the 秋日诗会 App Store event deep link.
+    @State private var opensAutumnGathering = false
 
     private var typeface: PoemTypeface {
         PoemTypeface(rawValue: typefaceRawValue) ?? .kaiti
@@ -73,7 +75,8 @@ private struct MainAppView: View {
 
     var body: some View {
         TabView(selection: $selectedSection) {
-            ClassicPoetryView(pendingPoemID: $pendingPoemID)
+            ClassicPoetryView(pendingPoemID: $pendingPoemID, opensAutumnGathering: $opensAutumnGathering)
+                .environment(\.writeAutumnPoem, AppLanguage.isEnglish ? nil : openComposer)
                 .tag(AppSection.classics)
                 .tabItem {
                     Label(AppLanguage.copy("赏诗", "Read").poemScript(script), systemImage: "book.pages")
@@ -126,6 +129,11 @@ private struct MainAppView: View {
         .environment(\.poemTypeface, typeface)
         .environment(\.poemScript, script)
         .onOpenURL { url in
+            if AutumnGathering.matches(url) {
+                selectedSection = .classics
+                opensAutumnGathering = true
+                return
+            }
             guard let id = DailyPoemWidgetStore.poemID(from: url) else { return }
             selectedSection = .classics
             pendingPoemID = id
@@ -144,6 +152,11 @@ private struct MainAppView: View {
         }
         .onChange(of: typefaceRawValue) { _, _ in DailyPoemWidgetSync.sync() }
         .onChange(of: scriptRawValue) { _, _ in DailyPoemWidgetSync.sync() }
+    }
+
+    private func openComposer() {
+        composePath = NavigationPath()
+        selectedSection = .compose
     }
 
     private func openArchive() {
