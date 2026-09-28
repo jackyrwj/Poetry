@@ -27,3 +27,7 @@ Poetry/Assets.xcassets/.imageset/
 # Local build artifacts / tooling state
 .asc/
 .poetry-preview-sim-udid
+
+# Landing page images are published via GitHub Pages
+!docs/*.png
+!docs/assets/*.png
