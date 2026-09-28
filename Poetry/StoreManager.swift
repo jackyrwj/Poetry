@@ -1,10 +1,15 @@
 import Foundation
+import RevenueCat
 import StoreKit
 import UIKit
 
 @MainActor
 final class StoreManager: ObservableObject {
     static let shared = StoreManager()
+
+    // MARK: - RevenueCat configuration
+    static let revenueCatAPIKey = "appl_omoXbTGaAuAZaCAimwOuFShKVVt"
+    static let entitlementID = "pro"
 
     // MARK: - Product IDs (must match App Store Connect)
     static let monthlyID = "com.raowenjie.Poetry.monthly"
@@ -13,31 +18,47 @@ final class StoreManager: ObservableObject {
 
     private static let allIDs: Set<String> = [monthlyID, yearlyID, lifetimeID]
 
+    /// Must run before `StoreManager.shared` is first touched.
+    static func configure() {
+        #if DEBUG
+        Purchases.logLevel = .debug
+        #endif
+        Purchases.configure(withAPIKey: revenueCatAPIKey)
+    }
+
     // MARK: - Published state
-    @Published private(set) var products: [Product] = []
-    @Published private(set) var purchasedProductIDs: Set<String> = []
+    @Published private(set) var products: [StoreProduct] = []
     @Published private(set) var isLoading = false
     @Published private(set) var purchaseError: String?
     @Published private(set) var productLoadError: String?
     @Published private(set) var hasFinishedLoadingProducts = false
+    /// Whether the current Apple ID can still redeem the monthly intro offer.
+    @Published private(set) var isEligibleForMonthlyIntro = false
 
-    private var transactionListener: Task<Void, Never>?
+    /// Entitlement as reported by RevenueCat.
+    @Published private(set) var hasRevenueCatEntitlement = false
+    /// Entitlement read directly from StoreKit. Keeps paying users unlocked if
+    /// RevenueCat is unreachable or has not yet seen a pre-RevenueCat purchase.
+    @Published private(set) var hasLocalEntitlement = false
+
+    private var customerInfoListener: Task<Void, Never>?
     private var foregroundObserver: Any?
+    private var didSyncLegacyPurchases = false
 
-    var monthly: Product? {
+    var monthly: StoreProduct? {
         product(id: Self.monthlyID)
     }
 
-    var yearly: Product? {
+    var yearly: StoreProduct? {
         product(id: Self.yearlyID)
     }
 
-    var lifetime: Product? {
+    var lifetime: StoreProduct? {
         product(id: Self.lifetimeID)
     }
 
     var isPremium: Bool {
-        !purchasedProductIDs.isEmpty
+        hasRevenueCatEntitlement || hasLocalEntitlement
     }
 
     var hasCompleteProductCatalog: Bool {
@@ -45,7 +66,7 @@ final class StoreManager: ObservableObject {
     }
 
     private init() {
-        transactionListener = listenForTransactions()
+        customerInfoListener = listenForCustomerInfo()
 
         Task {
             await loadProducts()
@@ -64,7 +85,7 @@ final class StoreManager: ObservableObject {
     }
 
     deinit {
-        transactionListener?.cancel()
+        customerInfoListener?.cancel()
         if let foregroundObserver {
             NotificationCenter.default.removeObserver(foregroundObserver)
         }
@@ -76,17 +97,40 @@ final class StoreManager: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        do {
-            let storeProducts = try await Product.products(for: Self.allIDs)
-            products = storeProducts.sorted { lhs, rhs in
-                productSortIndex(lhs.id) < productSortIndex(rhs.id)
-            }
-            productLoadError = hasCompleteProductCatalog ? nil : AppLanguage.copy("暫時無法取得完整購買選項，請稍後再試", "Unable to load every purchase option. Try again later.")
-        } catch {
+        var loaded: [StoreProduct] = []
+        if let offering = try? await Purchases.shared.offerings().current {
+            loaded = offering.availablePackages.map(\.storeProduct)
+        }
+        // Fall back to fetching by ID if the dashboard offering is incomplete.
+        if !Self.allIDs.isSubset(of: Set(loaded.map(\.productIdentifier))) {
+            loaded = await Purchases.shared.products(Array(Self.allIDs))
+        }
+
+        products = loaded
+            .filter { Self.allIDs.contains($0.productIdentifier) }
+            .sorted { productSortIndex($0.productIdentifier) < productSortIndex($1.productIdentifier) }
+
+        if products.isEmpty {
             productLoadError = AppLanguage.copy("無法載入購買選項，請稍後再試", "Unable to load purchase options. Try again later.")
-            print("StoreManager: Failed to load products - \(error)")
+        } else {
+            productLoadError = hasCompleteProductCatalog ? nil : AppLanguage.copy("暫時無法取得完整購買選項，請稍後再試", "Unable to load every purchase option. Try again later.")
         }
         hasFinishedLoadingProducts = true
+        await updateIntroEligibility()
+    }
+
+    /// The monthly intro offer, only when this user can still redeem it.
+    var monthlyIntroOffer: StoreProductDiscount? {
+        isEligibleForMonthlyIntro ? monthly?.introductoryDiscount : nil
+    }
+
+    private func updateIntroEligibility() async {
+        guard let monthly, monthly.introductoryDiscount != nil else {
+            isEligibleForMonthlyIntro = false
+            return
+        }
+        let status = await Purchases.shared.checkTrialOrIntroDiscountEligibility(product: monthly)
+        isEligibleForMonthlyIntro = status == .eligible
     }
 
     func reloadProducts() async {
@@ -99,27 +143,23 @@ final class StoreManager: ObservableObject {
 
     // MARK: - Purchase
     @discardableResult
-    func purchase(_ product: Product) async -> Bool {
+    func purchase(_ product: StoreProduct) async -> Bool {
         isLoading = true
         purchaseError = nil
         defer { isLoading = false }
 
         do {
-            let result = try await product.purchase()
-            switch result {
-            case .success(let verification):
-                let transaction = try checkVerified(verification)
-                await transaction.finish()
-                await updatePurchasedProducts()
-                return isPremium
-            case .userCancelled:
-                return false
-            case .pending:
-                purchaseError = AppLanguage.copy("購買待確認", "Purchase is pending confirmation.")
-                return false
-            @unknown default:
-                return false
-            }
+            let result = try await Purchases.shared.purchase(product: product)
+            guard !result.userCancelled else { return false }
+            apply(result.customerInfo)
+            await updateLocalEntitlement()
+            await updateIntroEligibility()
+            return isPremium
+        } catch ErrorCode.purchaseCancelledError {
+            return false
+        } catch ErrorCode.paymentPendingError {
+            purchaseError = AppLanguage.copy("購買待確認", "Purchase is pending confirmation.")
+            return false
         } catch {
             purchaseError = AppLanguage.isEnglish ? "Purchase failed: \(error.localizedDescription)" : "購買失敗：\(error.localizedDescription)"
             return false
@@ -132,8 +172,19 @@ final class StoreManager: ObservableObject {
         purchaseError = nil
         defer { isLoading = false }
 
-        try? await AppStore.sync()
-        await updatePurchasedProducts()
+        var restoreFailed = false
+        do {
+            apply(try await Purchases.shared.restorePurchases())
+        } catch {
+            restoreFailed = true
+        }
+        await updateLocalEntitlement()
+
+        if !isPremium {
+            purchaseError = restoreFailed
+                ? AppLanguage.copy("恢復失敗，請稍後再試", "Restore failed. Try again later.")
+                : AppLanguage.copy("未找到可恢復的購買", "No purchases to restore.")
+        }
     }
 
     func refreshPurchaseStatus() async {
@@ -146,6 +197,7 @@ final class StoreManager: ObservableObject {
             .first(where: { $0.activationState == .foregroundActive }) else { return }
 
         do {
+            // RevenueCat observes the resulting transaction itself.
             try await AppStore.presentOfferCodeRedeemSheet(in: windowScene)
             await updatePurchasedProducts()
         } catch {
@@ -153,43 +205,53 @@ final class StoreManager: ObservableObject {
         }
     }
 
-    // MARK: - Transaction listener
-    private func listenForTransactions() -> Task<Void, Never> {
-        Task.detached { [weak self] in
-            for await result in Transaction.updates {
-                if let transaction = try? result.payloadValue {
-                    await transaction.finish()
-                    await self?.updatePurchasedProducts()
-                }
+    // MARK: - Customer info listener
+    private func listenForCustomerInfo() -> Task<Void, Never> {
+        Task { [weak self] in
+            for await info in Purchases.shared.customerInfoStream {
+                self?.apply(info)
             }
         }
     }
 
     // MARK: - Entitlements
     private func updatePurchasedProducts() async {
-        var purchased: Set<String> = []
+        await updateLocalEntitlement()
 
-        for await result in Transaction.currentEntitlements {
-            if let transaction = try? checkVerified(result),
-               Self.allIDs.contains(transaction.productID) {
-                purchased.insert(transaction.productID)
+        if let info = try? await Purchases.shared.customerInfo() {
+            apply(info)
+        }
+
+        // Purchases made before RevenueCat was integrated are unknown to it
+        // until the SDK uploads them once.
+        if hasLocalEntitlement, !hasRevenueCatEntitlement, !didSyncLegacyPurchases {
+            didSyncLegacyPurchases = true
+            if let info = try? await Purchases.shared.syncPurchases() {
+                apply(info)
             }
         }
-
-        purchasedProductIDs = purchased
     }
 
-    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
-        switch result {
-        case .unverified(_, let error):
-            throw error
-        case .verified(let value):
-            return value
+    private func apply(_ info: CustomerInfo) {
+        hasRevenueCatEntitlement = info.entitlements[Self.entitlementID]?.isActive == true
+    }
+
+    /// Read-only: RevenueCat finishes transactions, so this never calls `finish()`.
+    private func updateLocalEntitlement() async {
+        var entitled = false
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result,
+               Self.allIDs.contains(transaction.productID),
+               transaction.revocationDate == nil {
+                entitled = true
+                break
+            }
         }
+        hasLocalEntitlement = entitled
     }
 
-    private func product(id: String) -> Product? {
-        products.first { $0.id == id }
+    private func product(id: String) -> StoreProduct? {
+        products.first { $0.productIdentifier == id }
     }
 
     private func productSortIndex(_ id: String) -> Int {

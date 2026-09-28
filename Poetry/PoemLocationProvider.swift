@@ -1,9 +1,26 @@
 import CoreLocation
 import Foundation
 
+/// Whether new inscriptions and share images may carry a place name.
+enum PoemLocationPreference {
+    static let storageKey = "showsInscriptionPlace"
+
+    static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: storageKey) as? Bool ?? true
+    }
+
+    /// Drops a stored place when the reader has turned place names off.
+    static func visible(_ place: String?) -> String? {
+        isEnabled ? place : nil
+    }
+}
+
 final class PoemLocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published private(set) var cityName: String?
-    @Published private(set) var inscriptionPlace: String?
+    @Published private var resolvedCityName: String?
+    @Published private var resolvedInscriptionPlace: String?
+
+    var cityName: String? { PoemLocationPreference.visible(resolvedCityName) }
+    var inscriptionPlace: String? { PoemLocationPreference.visible(resolvedInscriptionPlace) }
 
     private let manager = CLLocationManager()
     private let geocoder = CLGeocoder()
@@ -16,7 +33,7 @@ final class PoemLocationProvider: NSObject, ObservableObject, CLLocationManagerD
     }
 
     func requestCityIfNeeded() {
-        guard cityName == nil else { return }
+        guard PoemLocationPreference.isEnabled, resolvedCityName == nil else { return }
 
         switch manager.authorizationStatus {
         case .notDetermined:
@@ -60,59 +77,49 @@ final class PoemLocationProvider: NSObject, ObservableObject, CLLocationManagerD
         geocoder.reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "zh_Hans_CN")) { [weak self] placemarks, _ in
             guard let self else { return }
             let placemark = placemarks?.first
-            let city = placemark?.locality
-                ?? placemark?.subAdministrativeArea
-                ?? placemark?.administrativeArea
-            let place = Self.makeInscriptionPlace(from: placemark, city: city)
+            let city = [placemark?.locality, placemark?.subAdministrativeArea, placemark?.administrativeArea]
+                .compactMap { $0.flatMap(Self.cleanedName) }
+                .first
+            let place = Self.makeInscriptionPlace(city: city)
 
             DispatchQueue.main.async {
-                self.cityName = city
-                self.inscriptionPlace = place
+                self.resolvedCityName = city
+                self.resolvedInscriptionPlace = place
                 self.hasRequestedLocation = false
             }
         }
     }
 
-    private static func makeInscriptionPlace(from placemark: CLPlacemark?, city: String?) -> String? {
+    /// Only the city goes into a colophon ("於深圳"). Nearby landmarks and
+    /// districts vary with a few hundred metres of drift and would reveal more
+    /// than the privacy policy promises.
+    private static func makeInscriptionPlace(city: String?) -> String? {
         guard let city, !city.isEmpty else { return nil }
-
-        let cityPrefix = city.hasSuffix("市") ? String(city.dropLast()) : city
-
-        if let pointOfInterest = placemark?.areasOfInterest?.first, !pointOfInterest.isEmpty {
-            return "\(cityPrefix)\(poeticSuffix(for: pointOfInterest))"
-        }
-
-        if let inlandWater = placemark?.inlandWater, !inlandWater.isEmpty {
-            return "\(cityPrefix)\(poeticSuffix(for: inlandWater))"
-        }
-
-        if let ocean = placemark?.ocean, !ocean.isEmpty {
-            return "\(cityPrefix)\(poeticSuffix(for: ocean))"
-        }
-
-        if let district = placemark?.subLocality, !district.isEmpty, !city.contains(district) {
-            return "\(cityPrefix)\(district)"
-        }
-
-        return cityPrefix
+        return city.hasSuffix("市") ? String(city.dropLast()) : city
     }
 
-    private static func poeticSuffix(for place: String) -> String {
-        guard !place.hasSuffix("畔"), !place.hasSuffix("邊"), !place.hasSuffix("边") else {
-            return place
+    /// Map names can carry qualifiers ("深圳市(南山)") or come back in Latin
+    /// script abroad ("Springfield"). A colophon only takes a Chinese name, so
+    /// strip qualifiers and reject anything else.
+    private static func cleanedName(_ raw: String) -> String? {
+        var name = raw
+        for (open, close) in [("(", ")"), ("（", "）"), ("[", "]"), ("【", "】")] {
+            while let start = name.range(of: open),
+                  let end = name.range(of: close, range: start.upperBound..<name.endIndex) {
+                name.removeSubrange(start.lowerBound..<end.upperBound)
+            }
         }
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.unicodeScalars.allSatisfy(isHan) else { return nil }
+        return name
+    }
 
-        if place.contains("山")
-            || place.contains("湖")
-            || place.contains("海")
-            || place.contains("江")
-            || place.contains("河")
-            || place.contains("溪")
-            || place.contains("灣")
-            || place.contains("湾") {
-            return "\(place)畔"
+    private static func isHan(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF, 0x20000...0x2EBEF:
+            return true
+        default:
+            return false
         }
-
-        return place
     }
 }

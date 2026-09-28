@@ -26,18 +26,51 @@ struct ClassicPoem: Identifiable, Hashable, Codable, Sendable {
         PoemBackground(rawValue: backgroundRawValue) ?? .defaultBackground
     }
 
+    /// Classic poems always read over a painting. A poem whose text names no
+    /// scene falls back to the ferry boat rather than the composer's plain-paper
+    /// default, which has no image asset.
+    var sceneryBackground: PoemBackground {
+        background == .none ? .boat : background
+    }
+
     var backgroundImageName: String {
-        background.imageName ?? PoemBackground.defaultBackground.rawValue
+        sceneryBackground.rawValue
     }
 
     var searchableText: String {
         ([title, author, form] + lines + tags).joined(separator: " ")
     }
 
-    /// Poems by the famous (curated) poets read for free; works from the
-    /// broader Tang/Song collections require membership.
+    /// Every poem by the famous (featured) poets reads for free; the rest of
+    /// the Tang/Song collections requires membership.
     var requiresMembership: Bool {
-        !ClassicPoetLibrary.isFamousAuthor(author)
+        ClassicPoemIndex.flags[id]?.requiresMembership ?? !ClassicPoetLibrary.isFamousAuthor(author)
+    }
+
+    /// One of the household-name works listed first in the library.
+    var isSignature: Bool {
+        signatureRank != nil
+    }
+
+    /// Order among the signature works: the hand-edited editions in their
+    /// original sequence (静夜思, 春晓, 登鹳雀楼…), then quatrains and
+    /// regulated verse ahead of long ancient-style poems. Nil for other poems.
+    var signatureRank: Int? {
+        if let flags = ClassicPoemIndex.flags[id] { return flags.signatureRank }
+        return makeSignatureRank()
+    }
+
+    fileprivate func makeSignatureRank() -> Int? {
+        if let index = ClassicPoemLibrary.editionOrder[accessKey] { return index }
+        guard ClassicPoetLibrary.signaturePoemKeys.contains(accessKey) else { return nil }
+        if form.hasSuffix("绝句") { return 100 }
+        if form.hasSuffix("律诗") { return 101 }
+        return 102
+    }
+
+    /// Title + author in simplified script, tolerant of traditional input.
+    var accessKey: String {
+        "\(title.poemScript(.simplified))|\(author.poemScript(.simplified))"
     }
 }
 
@@ -54,6 +87,25 @@ extension ClassicPoem {
     private var englishContent: EnglishClassicPoemContent? {
         guard origin == .curated else { return nil }
         return Self.englishCuratedContent[id]
+    }
+
+    /// Chinese text always matches; the English edition additionally matches
+    /// English titles, English/pinyin author names, forms, and tags.
+    func matchesSearch(_ query: ClassicPoemSearchQuery) -> Bool {
+        let text = ClassicPoemIndex.searchText[id] ?? makeSearchText()
+        if text.chinese.contains(query.chinese) { return true }
+        guard !query.latinTokens.isEmpty, let latin = text.latin else { return false }
+        return query.latinTokens.allSatisfy { latin.contains($0) }
+    }
+
+    /// Normalized haystacks for `matchesSearch`; costly (ICU transforms), so
+    /// library poems read them from `ClassicPoemIndex` instead.
+    fileprivate func makeSearchText() -> ClassicPoemIndex.SearchText {
+        let chinese = searchableText.poemScript(.simplified).lowercased()
+        guard AppLanguage.isEnglish else { return .init(chinese: chinese, latin: nil) }
+        let englishText = ([localizedTitle, localizedAuthor, author.romanizedChinese, localizedForm]
+            + (englishContent?.tags ?? [])).joined(separator: " ")
+        return .init(chinese: chinese, latin: LatinSearch.compact(englishText))
     }
 
     /// The editorial English title, if one exists for this poem.
@@ -94,6 +146,23 @@ extension ClassicPoem {
             return englishContent?.translation ?? EnglishClassicPoemTranslationLibrary.value(for: id)
         }
         return translation ?? ChineseClassicPoemTranslationLibrary.value(for: id)
+    }
+
+    /// The English caption for share images; nil in the Chinese edition.
+    var shareTranslation: ShareTranslation? {
+        guard AppLanguage.isEnglish,
+              let text = localizedTranslation?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        return ShareTranslation(title: localizedTitle, byline: localizedAuthor, text: text)
+    }
+
+    /// "錄李白詩於紐約": copied from whose poem, and where. Both share entry
+    /// points use it so a poem looks the same wherever it is shared from.
+    func shareColophon(place: String?) -> String {
+        let isCi = origin == .songCiThreeHundred || form.contains("词") || form.contains("詞")
+        let isAnonymous = author.isEmpty || ["佚名", "无名氏", "無名氏"].contains(author)
+        let source = "錄\(isAnonymous ? "" : author)\(isCi ? "詞" : "詩")"
+        return source + (PoemLocationPreference.visible(place).map { "於\($0)" } ?? "")
     }
 
     var localizedAppreciation: String? {
@@ -194,6 +263,26 @@ extension ClassicPoem {
     ]
 }
 
+/// Case-, spacing- and diacritic-insensitive matching for English/pinyin
+/// queries, so "libai", "Li Bai" and "moon night" all find what they mean.
+enum LatinSearch {
+    static func matches(_ query: String, in text: String) -> Bool {
+        let haystack = compact(text)
+        let tokens = tokens(of: query)
+        guard !tokens.isEmpty else { return false }
+        return tokens.allSatisfy { haystack.contains($0) }
+    }
+
+    static func tokens(of query: String) -> [String] {
+        query.split(whereSeparator: { $0.isWhitespace }).map { compact(String($0)) }.filter { !$0.isEmpty }
+    }
+
+    static func compact(_ text: String) -> String {
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US"))
+        return String(folded.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+    }
+}
+
 extension String {
     /// Readable metadata fallback for Chinese names that do not yet have an editorial translation.
     var romanizedChinese: String {
@@ -206,6 +295,57 @@ extension String {
             .map { $0.capitalized }
             .joined(separator: " ")
     }
+}
+
+/// A query normalized once per search rather than once per poem.
+struct ClassicPoemSearchQuery: Sendable {
+    let chinese: String
+    let latinTokens: [String]
+
+    init?(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        chinese = trimmed.poemScript(.simplified).lowercased()
+        latinTokens = AppLanguage.isEnglish ? LatinSearch.tokens(of: trimmed) : []
+    }
+}
+
+/// Per-poem values that need ICU transforms (script conversion, romanization),
+/// derived once for the bundled library so search, sorting and list cells stay
+/// cheap. Poems outside the library (old favorites) fall back to computing live.
+enum ClassicPoemIndex {
+    struct Flags: Sendable {
+        let requiresMembership: Bool
+        let signatureRank: Int?
+    }
+
+    struct SearchText: Sendable {
+        let chinese: String
+        let latin: String?
+    }
+
+    static let flags: [String: Flags] = {
+        var famousByAuthor: [String: Bool] = [:]
+        var result: [String: Flags] = [:]
+        for poem in ClassicPoemLibrary.allPoems {
+            let isFamous = famousByAuthor[poem.author] ?? {
+                let value = ClassicPoetLibrary.isFamousAuthor(poem.author)
+                famousByAuthor[poem.author] = value
+                return value
+            }()
+            result[poem.id] = Flags(
+                requiresMembership: !isFamous,
+                signatureRank: poem.makeSignatureRank()
+            )
+        }
+        return result
+    }()
+
+    /// The heaviest index; warm it off the main thread before the first search.
+    static let searchText: [String: SearchText] = Dictionary(
+        ClassicPoemLibrary.allPoems.map { ($0.id, $0.makeSearchText()) },
+        uniquingKeysWith: { first, _ in first }
+    )
 }
 
 private struct EnglishClassicPoemTitleResource: Decodable {
@@ -330,7 +470,10 @@ enum ChineseClassicPoemTranslationLibrary {
 }
 
 enum ClassicPoemLibrary {
-    static let featured: [ClassicPoem] = [
+    /// Hand-edited editions (with commentary and English content) of a dozen
+    /// collection entries. They are not a separate tier: each simply stands in
+    /// for its 唐诗三百首 / 宋词三百首 entry at the same position.
+    private static let editions: [ClassicPoem] = [
         poem(
             "静夜思", author: "李白", dynasty: "唐", form: "五言绝句",
             lines: ["床前明月光，疑是地上霜。", "举头望明月，低头思故乡。"],
@@ -417,34 +560,38 @@ enum ClassicPoemLibrary {
         )
     ]
 
-    static func localSearch(_ query: String) -> [ClassicPoem] {
-        let key = query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .poemScript(.simplified)
-        let selected = mergedSelectedPoems
-        guard !key.isEmpty else { return selected }
-        return selected.filter { $0.searchableText.localizedCaseInsensitiveContains(key) }
-    }
+    /// The editions' curated sequence, which leads the poem list.
+    static let editionOrder: [String: Int] = Dictionary(
+        uniqueKeysWithValues: editions.enumerated().map { ($0.element.accessKey, $0.offset) }
+    )
 
-    /// All poems across the curated selection and the offline Tang Poems Three
-    /// Hundred and Song Lyrics Three Hundred collections. Only exact id
-    /// duplicates are removed within the collections (different poems may share
-    /// a title and author); a collection poem that duplicates a curated poem by
-    /// title + author is replaced by the curated version, which carries the
-    /// richer commentary and English content.
-    private static var mergedSelectedPoems: [ClassicPoem] {
-        let curated = featured
-        let curatedKeys = Set(featured.map(dedupKey))
+    static let tangShi: [ClassicPoem] = substitutingEditions(in: TangShiThreeHundredLibrary.poems)
+    static let songCi: [ClassicPoem] = substitutingEditions(in: SongCiThreeHundredLibrary.poems)
+
+    /// Every poem in collection order. Only exact id duplicates are removed
+    /// (different poems may share a title and author).
+    static let allPoems: [ClassicPoem] = {
         var seenIDs = Set<String>()
-        let collections = (TangShiThreeHundredLibrary.poems + SongCiThreeHundredLibrary.poems).filter { poem in
-            guard seenIDs.insert(poem.id).inserted else { return false }
-            return !curatedKeys.contains(dedupKey(poem))
-        }
-        return curated + collections
+        return (tangShi + songCi).filter { seenIDs.insert($0.id).inserted }
+    }()
+
+    static func search(_ query: String, in poems: [ClassicPoem] = allPoems) -> [ClassicPoem] {
+        guard let query = ClassicPoemSearchQuery(query) else { return poems }
+        return poems.filter { $0.matchesSearch(query) }
     }
 
-    private static func dedupKey(_ poem: ClassicPoem) -> String {
-        "\(poem.title.poemScript(.simplified))|\(poem.author.poemScript(.simplified))"
+    /// Two editions carry fuller titles than their collection entries.
+    private static let editionAliases = [
+        "夜思|李白": "静夜思|李白",
+        "卜算子|陆游": "卜算子·咏梅|陆游"
+    ]
+
+    private static func substitutingEditions(in poems: [ClassicPoem]) -> [ClassicPoem] {
+        let byKey = Dictionary(uniqueKeysWithValues: editions.map { ($0.accessKey, $0) })
+        return poems.map { poem in
+            let key = editionAliases[poem.accessKey] ?? poem.accessKey
+            return byKey[key] ?? poem
+        }
     }
 
     private static func poem(
@@ -474,9 +621,20 @@ enum ClassicPoemLibrary {
     }
 }
 
+/// When and where a classic poem was saved; the Saved tab renders it as the
+/// poem's colophon, the way an authored poem carries its inscription.
+struct ClassicPoemSaveMark: Codable, Equatable, Sendable {
+    var savedAt: Date
+    var place: String?
+    /// Set only on the poem placed in Saved for a new reader, not by them.
+    var isStarter: Bool?
+}
+
 enum ClassicPoemFavorites {
     private static let key = "classicPoemFavoriteIDs"
     private static let poemsKey = "classicPoemFavoriteItems"
+    private static let marksKey = "classicPoemFavoriteMarks"
+    private static let starterSeededKey = "didSeedStarterFavorite"
 
     static func load() -> Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
@@ -500,5 +658,66 @@ enum ClassicPoemFavorites {
         poems = poems.filter { ids.contains($0.key) }
         guard let data = try? JSONEncoder().encode(Array(poems.values)) else { return }
         UserDefaults.standard.set(data, forKey: poemsKey)
+
+        var marks = loadMarks().filter { ids.contains($0.key) }
+        if let poem, ids.contains(poem.id), marks[poem.id] == nil {
+            marks[poem.id] = ClassicPoemSaveMark(savedAt: Date())
+        }
+        persistMarks(marks)
+        Task { @MainActor in DailyPoemWidgetSync.syncFavorites() }
+    }
+
+    /// A new reader's Saved page starts with 静夜思, so the page — and the
+    /// widget's pinned-poem picker — are not empty on first visit. Runs once
+    /// per install and never for a reader who has already used favorites, so
+    /// removing it is final.
+    static func seedStarterPoemIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: starterSeededKey) else { return }
+        defaults.set(true, forKey: starterSeededKey)
+        guard
+            defaults.object(forKey: key) == nil,
+            let poem = ClassicPoemLibrary.allPoems.first(where: { $0.title == "静夜思" && $0.author == "李白" })
+        else { return }
+        save([poem.id], including: poem)
+        var marks = loadMarks()
+        marks[poem.id]?.isStarter = true
+        persistMarks(marks)
+    }
+
+    static func isStarter(_ id: String) -> Bool {
+        loadMarks()[id]?.isStarter == true
+    }
+
+    /// Poems saved before marks existed are stamped the first time they are shown.
+    static func mark(for id: String) -> ClassicPoemSaveMark {
+        var marks = loadMarks()
+        if let mark = marks[id] { return mark }
+        let mark = ClassicPoemSaveMark(savedAt: Date())
+        marks[id] = mark
+        persistMarks(marks)
+        return mark
+    }
+
+    /// The place arrives asynchronously after saving; the first one found sticks.
+    static func recordPlace(_ place: String, for id: String) {
+        var marks = loadMarks()
+        guard var mark = marks[id], mark.place == nil else { return }
+        mark.place = place
+        marks[id] = mark
+        persistMarks(marks)
+    }
+
+    private static func loadMarks() -> [String: ClassicPoemSaveMark] {
+        guard
+            let data = UserDefaults.standard.data(forKey: marksKey),
+            let marks = try? JSONDecoder().decode([String: ClassicPoemSaveMark].self, from: data)
+        else { return [:] }
+        return marks
+    }
+
+    private static func persistMarks(_ marks: [String: ClassicPoemSaveMark]) {
+        guard let data = try? JSONEncoder().encode(marks) else { return }
+        UserDefaults.standard.set(data, forKey: marksKey)
     }
 }

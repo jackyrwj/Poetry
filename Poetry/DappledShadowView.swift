@@ -13,9 +13,9 @@ enum ShadowStyle: String, CaseIterable, Identifiable {
     static let storageKey = "poem_shadow_style"
     static let visibleCases = allCases.filter { $0 != .none && $0 != .dappled }
 
-    /// 素紙 is the Chinese default (no light effect); English readers keep the
-    /// morning-light look that shipped with the first release.
-    static var defaultStyle: ShadowStyle { AppLanguage.isEnglish ? .morning : .none }
+    /// A faint paper-fiber texture keeps the plain default paper from reading
+    /// as empty, in both languages.
+    static let defaultStyle: ShadowStyle = .xuanPaper
 
     var displayName: String {
         switch self {
@@ -76,10 +76,9 @@ enum PoemBackground: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     static let storageKey = "poem_background"
-    /// 素紙 is the Chinese default; English readers keep the ferry-boat paper
-    /// that shipped with the first release.
-    static var defaultBackground: PoemBackground { AppLanguage.isEnglish ? .boat : .none }
-    private static let didMigrateDefaultToBoatKey = "poem_background_default_boat_migrated"
+    /// 素紙 is the default in both languages: the reader's own verse is the
+    /// subject, and a painting is something they choose.
+    static let defaultBackground: PoemBackground = .none
 
     var displayName: String {
         switch self {
@@ -145,32 +144,6 @@ enum PoemBackground: String, CaseIterable, Identifiable {
         ]
         return matches.first(where: { text.contains($0.0) })?.1 ?? defaultBackground
     }
-
-    static func migrateDefaultToBoatIfNeeded(selectedBgRaw: inout String) {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: didMigrateDefaultToBoatKey) else { return }
-        if PoemBackground(rawValue: selectedBgRaw) == PoemBackground.none {
-            selectedBgRaw = defaultBackground.rawValue
-        }
-        defaults.set(true, forKey: didMigrateDefaultToBoatKey)
-    }
-
-    static func migrateAppPaperDefaultToBoatIfNeeded(selectedBgRaw: inout String) {
-        let defaults = UserDefaults.standard
-        let key = "poem_background_default_boat_app_migrated_v2"
-        guard !defaults.bool(forKey: key) else { return }
-        // 素紙 is the Chinese default again, so only English readers migrate
-        // a legacy unset/none selection onto the ferry-boat paper.
-        guard AppLanguage.isEnglish else {
-            defaults.set(true, forKey: key)
-            return
-        }
-        let selectedBackground = PoemBackground(rawValue: selectedBgRaw)
-        if selectedBackground == nil || selectedBackground == PoemBackground.none {
-            selectedBgRaw = defaultBackground.rawValue
-        }
-        defaults.set(true, forKey: key)
-    }
 }
 
 // MARK: - Main view
@@ -181,7 +154,7 @@ struct DappledShadowView: View {
     var styleOverride: ShadowStyle? = nil
 
     private var style: ShadowStyle {
-        styleOverride ?? ShadowStyle(rawValue: styleRaw) ?? .morning
+        styleOverride ?? ShadowStyle(rawValue: styleRaw) ?? .defaultStyle
     }
 
     var body: some View {

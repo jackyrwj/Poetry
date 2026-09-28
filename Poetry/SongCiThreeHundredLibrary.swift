@@ -15,20 +15,6 @@ enum SongCiThreeHundredLibrary {
         Array(Set(poems.map(\.author))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    static func search(_ query: String, form: String? = nil) -> [ClassicPoem] {
-        let key = query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .poemScript(.simplified)
-
-        return poems.filter { poem in
-            let matchesForm = form == nil || poem.form == form
-            let matchesQuery = key.isEmpty || poem.searchableText
-                .poemScript(.simplified)
-                .localizedCaseInsensitiveContains(key)
-            return matchesForm && matchesQuery
-        }
-    }
-
     private static func loadPoems() -> [ClassicPoem] {
         guard
             let url = Bundle.main.url(forResource: "SongCiThreeHundred", withExtension: "json"),

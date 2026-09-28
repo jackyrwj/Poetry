@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1100" viewBox="0 0 1024 1100">
+<defs>
+<filter id="paper"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="2" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.08 0"/><feComposite in2="SourceGraphic" operator="in"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
+<filter id="edge" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="11"/><feDisplacementMap in="SourceGraphic" scale="6"/></filter>
+<filter id="ink" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="11" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="6" result="d"/>
+ <feTurbulence type="fractalNoise" baseFrequency="0.35" numOctaves="2" seed="5" result="g"/><feColorMatrix in="g" type="matrix" values="0 0 0 0 0.24  0 0 0 0 0.22  0 0 0 0 0.20  0 0 0 0.35 -0.16" result="gm"/><feComposite in="gm" in2="d" operator="in" result="tex"/><feMerge><feMergeNode in="d"/><feMergeNode in="tex"/></feMerge></filter>
+<radialGradient id="sun" cx="0.45" cy="0.42" r="0.6"><stop offset="0" stop-color="#CF4436"/><stop offset="1" stop-color="#B5352A"/></radialGradient>
+</defs>
+<rect width="1024" height="1100" fill="#F1E9DA" filter="url(#paper)"/>
+<circle cx="250" cy="250" r="104" fill="url(#sun)" filter="url(#edge)"/>
+
+<g id="ribbons" fill="#1B1917" filter="url(#ink)">
+ <path d="M648 282 C712 292 770 344 792 420 C808 476 812 530 840 580 C846 592 836 598 826 590 C790 556 776 500 764 450 C748 390 712 346 644 324 Z"/>
+ <path d="M646 330 C696 372 722 434 724 500 C726 548 736 590 762 628 C768 638 758 644 748 636 C712 604 700 556 696 506 C692 450 676 404 638 364 Z"/>
+<ellipse cx="656" cy="316" rx="20" ry="30"/>
+</g>
+<!-- paper gap around head/body so ribbons separate -->
+<path d="M655 362 C664 420 652 482 622 538 C614 556 612 572 624 588 C700 626 800 690 870 820" fill="none" stroke="#F1E9DA" stroke-width="22" stroke-linecap="round"/>
+
+<!-- robe: Tang round-collar, lighter ink tone -->
+<g filter="url(#ink)">
+ <path fill="#4A433D" d="M470 574 C530 566 592 562 648 552 C700 596 830 690 890 840 C916 900 932 980 950 1100 L170 1100 C186 960 230 860 300 790 C340 750 390 712 430 684 Z"/>
+ <path fill="#1B1917" d="M462 570 C530 560 594 556 650 546 C660 556 664 566 662 576 C600 588 534 594 468 600 Z"/>
+</g>
+
+<g fill="#1B1917" filter="url(#ink)">
+ <!-- 幞头 -->
+ <path d="M398 344 C390 296 400 244 436 212 C466 186 506 180 538 190 C556 160 596 148 630 158 C666 172 680 214 676 262 C672 306 664 340 656 370 Z"/>
+ <!-- head + flowing beard, drawn over the robe -->
+ <path d="M398 344 L656 370 C664 424 652 484 624 536 C616 550 606 560 594 566
+  L486 572
+  C476 604 460 648 440 684
+  C422 716 392 750 350 778
+  C356 760 358 748 352 738
+  C344 742 334 746 322 748
+  C324 700 332 646 344 600
+  C350 574 356 552 364 538
+  C360 532 358 526 362 520
+  C354 520 344 520 334 518
+  C340 506 348 496 358 490
+  C350 486 340 486 331 484
+  C320 482 318 468 328 463
+  C346 450 362 436 373 425
+  C378 418 380 410 378 404
+  C382 396 384 388 386 380
+  C388 366 392 354 398 344 Z"/>
+</g>
+
+<g fill="none" stroke="#F1E9DA" stroke-linecap="round" stroke-linejoin="round" filter="url(#edge)">
+ <path d="M402 350 L652 374" stroke-width="12"/>
+ <path d="M566 418 C586 420 594 444 586 466 C580 480 568 484 558 480" stroke-width="6"/>
+</g>
+</svg>

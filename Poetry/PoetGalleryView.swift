@@ -3,13 +3,26 @@ import SwiftUI
 enum PoetRoute: Hashable {
     case poet(ClassicPoet)
     case poem(ClassicPoem)
+    /// A saved classic reopened as its paper artwork.
+    case savedPoem(ClassicPoem)
+    /// The saved-poems grid, pushed from the Chinese 赏诗 header.
+    case savedPoems
+    /// Poets the reader has saved, pushed from the 诗人 header.
+    case savedPoets
+
+    /// Everything pushed above one of these belongs to a saved collection.
+    var isSavedCollection: Bool {
+        switch self {
+        case .savedPoem, .savedPoems, .savedPoets: true
+        case .poet, .poem: false
+        }
+    }
 }
 
 struct PoetGalleryView: View {
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
     @AppStorage(PoemScript.storageKey) private var scriptRawValue = PoemScript.simplified.rawValue
     @State private var favoriteIDs = ClassicPoemFavorites.load()
-    @State private var showsSettings = false
     @State private var path: [PoetRoute] = []
     @State private var pendingPoet: ClassicPoet?
     @State private var showsPaywall = false
@@ -103,15 +116,7 @@ struct PoetGalleryView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(for: PoetRoute.self) { route in
-                switch route {
-                case .poet(let poet):
-                    PoetDetailView(poet: poet, favoriteIDs: $favoriteIDs, path: $path)
-                case .poem(let poem):
-                    ClassicPoemDetailView(poem: poem, favoriteIDs: $favoriteIDs, path: $path)
-                }
-            }
-            .sheet(isPresented: $showsSettings) {
-                FontSettingsView()
+                PoetRouteDestination(route: route, favoriteIDs: $favoriteIDs, path: $path)
             }
             .sheet(isPresented: $showsPaywall) {
                 PaywallView {
@@ -150,11 +155,15 @@ struct PoetGalleryView: View {
 
     private func matchesSearch(_ poet: ClassicPoet) -> Bool {
         guard !searchQuery.isEmpty else { return true }
-        let query = searchQuery.localizedLowercase
-        return poet.name.localizedLowercase.contains(query)
-            || poet.localizedName.localizedLowercase.contains(query)
-            || poet.localizedIntroduction.localizedLowercase.contains(query)
-            || (poet.localizedBiography ?? "").localizedLowercase.contains(query)
+        let chineseQuery = searchQuery.poemScript(.simplified)
+        if poet.name.poemScript(.simplified).localizedCaseInsensitiveContains(chineseQuery) { return true }
+        if AppLanguage.isEnglish {
+            // English matches names only; free-text bios would make short
+            // pinyin queries like "li" match nearly every poet.
+            return LatinSearch.matches(searchQuery, in: "\(poet.localizedName) \(poet.name.romanizedChinese)")
+        }
+        return poet.introduction.localizedCaseInsensitiveContains(chineseQuery)
+            || (poet.localizedBiography ?? "").localizedCaseInsensitiveContains(chineseQuery)
     }
 
     private var searchField: some View {
@@ -188,7 +197,7 @@ struct PoetGalleryView: View {
         .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.78), lineWidth: 0.8)
+                .stroke(isSearchFocused ? ClassicPalette.cinnabar.opacity(0.45) : ClassicPalette.mutedInk.opacity(0.22), lineWidth: 1)
         }
         .accessibilityLabel(AppLanguage.copy("搜索诗人", "Search poets").poemScript(script))
         .onChange(of: searchText) { oldValue, newValue in
@@ -227,10 +236,12 @@ struct PoetGalleryView: View {
 
             Spacer()
 
-            SettingsButton {
-                showsSettings = true
+            CircleToolbarButton(systemName: "bookmark") {
+                path.append(.savedPoets)
             }
+            .accessibilityLabel(AppLanguage.copy("收藏的诗人", "Saved poets").poemScript(script))
         }
+        .frame(minHeight: 38)
     }
 }
 
@@ -257,6 +268,28 @@ private struct PoetGridCard: View {
                         Circle().stroke(.white.opacity(0.9), lineWidth: 2)
                     }
                     .shadow(color: .black.opacity(0.1), radius: 12, y: 7)
+            } else {
+                // Collection poets have no portrait: their name, inked on paper,
+                // takes the portrait's place so every saved card keeps one shape.
+                Circle()
+                    .fill(Color(red: 0.97, green: 0.95, blue: 0.9))
+                    .overlay {
+                        Circle()
+                            .inset(by: 7)
+                            .stroke(ClassicPalette.cinnabar.opacity(0.28), lineWidth: 0.8)
+                    }
+                    .overlay {
+                        Text(String(poet.name.prefix(1)).poemScript(script))
+                            .font(typeface.font(size: 52))
+                            .foregroundStyle(ClassicPalette.ink.opacity(0.82))
+                    }
+                    .overlay {
+                        Circle().stroke(.white.opacity(0.9), lineWidth: 2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .shadow(color: .black.opacity(0.1), radius: 12, y: 7)
+                    .accessibilityHidden(true)
             }
 
             if isLocked, !AppLanguage.isEnglish {
@@ -340,6 +373,12 @@ struct PoetDetailView: View {
     let poet: ClassicPoet
     @Binding var favoriteIDs: Set<String>
     @Binding var path: [PoetRoute]
+    /// False when opened from a saved collection: the bookmark is hidden there.
+    var allowsSaving = true
+    @ObservedObject private var store = StoreManager.shared
+    @State private var showsPaywall = false
+    @State private var pendingPoem: ClassicPoem?
+    @State private var isSaved = false
 
     var body: some View {
         ZStack {
@@ -371,6 +410,11 @@ struct PoetDetailView: View {
 
                     ForEach(poet.poems) { poem in
                         Button {
+                            guard !poem.requiresMembership || store.isPremium else {
+                                pendingPoem = poem
+                                showsPaywall = true
+                                return
+                            }
                             path.append(.poem(poem))
                         } label: {
                             ClassicPoemCard(poem: poem, isFavorite: favoriteIDs.contains(poem.id))
@@ -383,6 +427,15 @@ struct PoetDetailView: View {
                 .padding(.bottom, 40)
             }
         }
+        .sheet(isPresented: $showsPaywall) {
+            PaywallView {
+                showsPaywall = false
+                if let pendingPoem {
+                    path.append(.poem(pendingPoem))
+                    self.pendingPoem = nil
+                }
+            }
+        }
         .navigationBarBackButtonHidden(true)
         .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -390,7 +443,19 @@ struct PoetDetailView: View {
             ToolbarItem(placement: .topBarLeading) {
                 CircleToolbarButton(systemName: "chevron.left") { dismiss() }
             }
+            if allowsSaving {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CircleToolbarButton(systemName: isSaved ? "bookmark.fill" : "bookmark") {
+                        SensoryFeedback.lightTap()
+                        isSaved = ClassicPoetFavorites.toggle(poet.id)
+                    }
+                    .accessibilityLabel(isSaved
+                        ? AppLanguage.copy("取消收藏诗人", "Remove from saved poets").poemScript(script)
+                        : AppLanguage.copy("收藏诗人", "Save poet").poemScript(script))
+                }
+            }
         }
+        .onAppear { isSaved = ClassicPoetFavorites.contains(poet.id) }
     }
 
     private var poetHeader: some View {
@@ -443,6 +508,116 @@ struct PoetDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
+    }
+}
+
+/// Poets the reader saved from their profile page, most recent first.
+struct SavedPoetsView: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var store = StoreManager.shared
+    @Binding var path: [PoetRoute]
+    @State private var poets = ClassicPoetFavorites.loadPoets()
+    @State private var pendingPoet: ClassicPoet?
+    @State private var showsPaywall = false
+    private let columns = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
+
+    var body: some View {
+        ZStack {
+            PaperBackground()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(AppLanguage.copy("收藏的诗人", "Saved Poets").poemScript(script))
+                            .font(typeface.titleFont)
+                            .foregroundStyle(ClassicPalette.ink)
+                        if !poets.isEmpty {
+                            Text((AppLanguage.isEnglish
+                                ? "\(poets.count) saved \(poets.count == 1 ? "poet" : "poets")"
+                                : "已收藏 \(poets.count) 位").poemScript(script))
+                                .font(.system(size: 12))
+                                .foregroundStyle(ClassicPalette.mutedInk.opacity(0.72))
+                        }
+                    }
+                    .padding(.bottom, 8)
+
+                    if poets.isEmpty {
+                        emptyState
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(poets) { poet in
+                                Button { openProfile(for: poet) } label: {
+                                    PoetGridCard(poet: poet)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                Button(role: .destructive) {
+                                    withAnimation(.easeOut(duration: 0.25)) {
+                                        _ = ClassicPoetFavorites.toggle(poet.id)
+                                        poets = ClassicPoetFavorites.loadPoets()
+                                    }
+                                } label: {
+                                    Label(AppLanguage.copy("取消收藏", "Remove").poemScript(script), systemImage: "bookmark.slash")
+                                }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 4)
+                .padding(.bottom, 40)
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                CircleToolbarButton(systemName: "chevron.left") { dismiss() }
+            }
+        }
+        .onAppear { poets = ClassicPoetFavorites.loadPoets() }
+        .sheet(isPresented: $showsPaywall) {
+            PaywallView {
+                showsPaywall = false
+                if let pendingPoet {
+                    path.append(.poet(pendingPoet))
+                    self.pendingPoet = nil
+                }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "bookmark")
+                .font(.system(size: 28, weight: .light))
+            Text(AppLanguage.copy("还没有收藏诗人", "No saved poets yet").poemScript(script))
+                .font(typeface.bodyFont)
+            Text(AppLanguage.copy("在诗人页右上角点一下书签，喜欢的诗人会留在这里。", "Tap the bookmark on a poet's page to save them here.").poemScript(script))
+                .font(typeface.smallFont)
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(ClassicPalette.mutedInk)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 80)
+    }
+
+    private func openProfile(for poet: ClassicPoet) {
+        guard !poet.requiresMembership || store.isPremium else {
+            pendingPoet = poet
+            showsPaywall = true
+            return
+        }
+        path.append(.poet(poet))
     }
 }
 

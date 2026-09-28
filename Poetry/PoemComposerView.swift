@@ -9,12 +9,12 @@ private extension Color {
     static let ink = Color(red: 0.08, green: 0.075, blue: 0.07)
     static let mutedInk = Color(red: 0.34, green: 0.32, blue: 0.29)
     static let cinnabar = Color(red: 0.77, green: 0.02, blue: 0.06)
-    static let premiumGold = Color(red: 0.94, green: 0.64, blue: 0.08)
 }
 
 struct PoemComposerView: View {
-    /// A completed poem belongs in the archive. When the user returns to this tab,
-    /// start a fresh composing session rather than replaying the completion reveal.
+    /// A completed poem belongs in the archive. Once the composer is out of view
+    /// (archive pushed or another tab selected), start a fresh composing session
+    /// rather than replaying the completion reveal on return.
     var isActive: Bool = true
     var onOpenArchive: () -> Void = {}
 
@@ -41,7 +41,6 @@ struct PoemComposerView: View {
     @State private var homeImages = PoetrySeed.images
     @State private var selectedLines: [String] = []
     @State private var currentLineIndex = 0
-    @State private var showsFontSettings = false
     @State private var savedPoems = PoemArchiveStore.load()
     @State private var isRefreshingImages = false
     @State private var recentHomeImageTitles: [String] = PoetrySeed.images.map(\.title)
@@ -115,18 +114,18 @@ struct PoemComposerView: View {
                     mood: selectedMood,
                     image: selectedImage,
                     lines: selectedLines,
-                    onReviseLine: { index in
+                    onReviseLine: { index, text in
+                        // Editing only rewrites the text in place; it never
+                        // returns to AI line picking.
+                        guard selectedLines.indices.contains(index) else { return }
                         // The finished poem was auto-saved; drop it so the
                         // revised version replaces it instead of duplicating.
                         if let currentSavedPoem {
                             savedPoems = PoemArchiveStore.delete(currentSavedPoem)
                             self.currentSavedPoem = nil
                         }
-                        hasCompletedCurrentPoem = false
-                        let safeIndex = min(max(index, 0), selectedLines.count)
-                        currentLineIndex = safeIndex
-                        selectedLines = Array(selectedLines.prefix(safeIndex))
-                        stage = .line
+                        selectedLines[index] = text
+                        archiveCompletedPoem(lines: selectedLines)
                     },
                     onSave: { poem in
                         savedPoems = PoemArchiveStore.save(poem)
@@ -137,17 +136,12 @@ struct PoemComposerView: View {
                         // The composer resets itself when this tab becomes active again.
                         onOpenArchive()
                         requestReviewAfterFirstPoemIfNeeded()
-                    },
-                    onRestart: {
-                        returnHomeFromFinishedPoem()
                     }
                 )
             }
 
             if stage == .heart {
-                SettingsButton {
-                    showsFontSettings = true
-                }
+                ArchiveEntryButton(count: savedPoems.count)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(.trailing, 24)
                 .padding(.top, 76)
@@ -157,9 +151,6 @@ struct PoemComposerView: View {
         .environment(\.poemTypeface, PoemTypeface(rawValue: typefaceRawValue) ?? .kaiti)
         .environment(\.poemScript, PoemScript(rawValue: scriptRawValue) ?? .simplified)
         .environmentObject(locationProvider)
-        .sheet(isPresented: $showsFontSettings) {
-            FontSettingsView()
-        }
         .sheet(isPresented: $showsPaywall) {
             PaywallView {
                 showsPaywall = false
@@ -169,7 +160,7 @@ struct PoemComposerView: View {
             PoemSharePreviewView(
                 imageTitle: poem.imageTitle,
                 lines: poem.lines,
-                locationMark: poem.locationText,
+                locationMark: PoemLocationPreference.visible(poem.locationText),
                 lunarDateText: poem.lunarDateText,
                 dayPeriodText: poem.dayPeriodText
             )
@@ -180,11 +171,17 @@ struct PoemComposerView: View {
             migrateDefaultTypefaceIfNeeded()
             migrateDefaultScriptIfNeeded()
             resetPremiumSelectionsIfNeeded()
-            PoemBackground.migrateAppPaperDefaultToBoatIfNeeded(selectedBgRaw: &backgroundRawValue)
         }
         .onChange(of: isActive) { _, isNowActive in
-            guard isNowActive, hasCompletedCurrentPoem, stage == .finish else { return }
-            restartPoem()
+            if isNowActive {
+                savedPoems = PoemArchiveStore.load()
+                return
+            }
+            guard hasCompletedCurrentPoem, stage == .finish else { return }
+            // Wait out the push / tab transition so the reset happens off screen.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                restartPoem()
+            }
         }
     }
 
@@ -291,11 +288,6 @@ struct PoemComposerView: View {
         hasCompletedCurrentPoem = false
         currentSavedPoem = nil
         stage = .heart
-    }
-
-    private func returnHomeFromFinishedPoem() {
-        restartPoem()
-        requestReviewAfterFirstPoemIfNeeded()
     }
 
     private func requestReviewAfterFirstPoemIfNeeded() {
@@ -1352,7 +1344,7 @@ private struct LinePickingView: View {
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLanguage.copy("織詩", "Compose").poemScript(script))
+                        Text(AppLanguage.copy("AI寫詩", "Compose").poemScript(script))
                             .font(typeface.titleFont)
                             .foregroundStyle(Color.ink)
                         Text(AppLanguage.isEnglish ? "Original Chinese · \(poemForm.lineCount) lines" : "\(mood.title) · \(poemForm.displayName)".poemScript(script))
@@ -1571,6 +1563,7 @@ private struct SelfWriteSheet: View {
     let charCount: Int
     let lineIndex: Int
     @Binding var text: String
+    var editsExistingLine = false
     let onConfirm: (String) -> Void
 
     @FocusState private var isFocused: Bool
@@ -1600,9 +1593,9 @@ private struct SelfWriteSheet: View {
                 // Header
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text((AppLanguage.isEnglish
-                            ? "Write line \(lineIndex + 1)"
-                            : "自書第\(lineIndex + 1)句").poemScript(script))
+                        Text((editsExistingLine
+                            ? AppLanguage.copy("改第\(lineIndex + 1)句", "Edit line \(lineIndex + 1)")
+                            : AppLanguage.copy("自書第\(lineIndex + 1)句", "Write line \(lineIndex + 1)")).poemScript(script))
                             .font(typeface.titleFont)
                             .foregroundStyle(Color.ink)
                         Text(roleHint.poemScript(script))
@@ -1853,15 +1846,25 @@ private struct FinishedPoemView: View {
     let mood: MoodSeed
     let image: ImageSeed
     let lines: [String]
-    let onReviseLine: (Int) -> Void
+    let onReviseLine: (Int, String) -> Void
     let onSave: (SavedPoem) -> Void
     let onOpenArchive: () -> Void
-    let onRestart: () -> Void
     @State private var revealedChars = 0
     @State private var showSeal = false
     @State private var showActions = false
     @State private var isRevisingPoem = false
     @State private var isSaved = false
+    @State private var editingLine: EditingLine?
+    @State private var editingText = ""
+
+    private struct EditingLine: Identifiable {
+        let index: Int
+        var id: Int { index }
+    }
+
+    private func characterCount(of line: String) -> Int {
+        line.unicodeScalars.filter { CharacterSet.cjk.contains($0) }.count
+    }
 
     private func charsForLine(_ lineIndex: Int) -> Int {
         var charsBefore = 0
@@ -1891,14 +1894,13 @@ private struct FinishedPoemView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VerticalPoemComposition(columnSpacing: columnSpacing, minimumGap: 40 * scale) {
-                        VStack(alignment: .leading, spacing: 36 * scale) {
-                            PoemInscriptionView(locationMark: locationMark)
-                                .opacity(allRevealed ? 1 : 0)
-                            if !sealName.isEmpty {
-                                SealStampView(name: sealName, size: 104 * scale)
-                                    .opacity(showSeal ? 1 : 0)
-                                    .scaleEffect(showSeal ? 1 : 0.7)
-                            }
+                        PoemInscriptionView(locationMark: locationMark)
+                            .opacity(allRevealed ? 1 : 0)
+                    } seal: {
+                        if !sealName.isEmpty {
+                            SealStampView(name: sealName, size: 104 * scale)
+                                .opacity(showSeal ? 1 : 0)
+                                .scaleEffect(showSeal ? 1 : 0.7)
                         }
                     } verses: {
                         ForEach(Array(lines.indices.reversed()), id: \.self) { index in
@@ -1907,7 +1909,10 @@ private struct FinishedPoemView: View {
                                     line: lines[index],
                                     fontSize: fontSize,
                                     spacing: characterSpacing,
-                                    action: { onReviseLine(index) }
+                                    action: {
+                                        editingText = lines[index]
+                                        editingLine = EditingLine(index: index)
+                                    }
                                 )
                             } else {
                                 // Reserve every column from the first frame so
@@ -1931,14 +1936,14 @@ private struct FinishedPoemView: View {
 
             VStack(spacing: 16) {
                 if isRevisingPoem {
-                    Text(AppLanguage.copy("點一句重寫", "Tap a line to rewrite it").poemScript(script))
+                    Text(AppLanguage.copy("點一句修改文字", "Tap a line to edit its text").poemScript(script))
                         .font(.system(size: 12))
                         .foregroundStyle(Color.mutedInk.opacity(0.72))
                 }
 
                 HStack(spacing: 30) {
                     SealButton(
-                        title: isRevisingPoem ? AppLanguage.copy("取消", "Cancel") : AppLanguage.copy("修改", "Edit"),
+                        title: isRevisingPoem ? AppLanguage.copy("完成", "Done") : AppLanguage.copy("修改", "Edit"),
                         isSelected: !isRevisingPoem,
                         action: { isRevisingPoem.toggle() }
                     )
@@ -1946,13 +1951,6 @@ private struct FinishedPoemView: View {
                         title: AppLanguage.copy("保存", "Save"),
                         isSelected: true,
                         action: onOpenArchive
-                    )
-                    SealButton(
-                        title: AppLanguage.copy("首页", "Home"),
-                        isSelected: true,
-                        spotlightStep: .returnHome,
-                        advancesSpotlightAutomatically: false,
-                        action: onRestart
                     )
                 }
             }
@@ -1967,10 +1965,23 @@ private struct FinishedPoemView: View {
         .animation(.easeOut(duration: 0.6), value: showSeal)
         .animation(.easeOut(duration: 0.45), value: showActions)
         .animation(.easeOut(duration: 0.5), value: locationProvider.inscriptionPlace)
-        .task(id: lines.joined(separator: "|")) {
+        // Reveal once; in-place text edits must not replay the animation.
+        .task {
             await revealPoem()
         }
-        .spotlightOverlay(for: [.returnHome])
+        .sheet(item: $editingLine) { editing in
+            SelfWriteSheet(
+                charCount: characterCount(of: lines[editing.index]),
+                lineIndex: editing.index,
+                text: $editingText,
+                editsExistingLine: true
+            ) { newLine in
+                if newLine != lines[editing.index] {
+                    onReviseLine(editing.index, newLine)
+                }
+                editingLine = nil
+            }
+        }
     }
 
     private func revealPoem() async {
@@ -2301,47 +2312,6 @@ private struct ShareSurfacePicker: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
-                    // Shadow effects
-                    ForEach(ShadowStyle.visibleCases) { style in
-                        Button {
-                            withAnimation(.easeOut(duration: 0.25)) {
-                                selectedShadowRaw = style.rawValue
-                                selectedBgRaw = PoemBackground.none.rawValue
-                            }
-                            SensoryFeedback.lightTap()
-                        } label: {
-                            let isActive = isShadowSelected && selectedShadowRaw == style.rawValue
-                            VStack(spacing: 8) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    ShadowPreviewTile(style: style)
-                                        .frame(width: 52, height: 72)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .stroke(
-                                                    isActive ? Color.cinnabar : Color.mutedInk.opacity(0.3),
-                                                    lineWidth: isActive ? 1.5 : 0.8
-                                                )
-                                        )
-
-                                    if isActive {
-                                        SelectionIndicator(size: 18)
-                                            .offset(x: 5, y: 5)
-                                            .transition(.scale(scale: 0.75).combined(with: .opacity))
-                                    }
-                                }
-                                Text(style.displayName.poemScript(script))
-                                    .font(typeface.tinySealFont)
-                                    .foregroundStyle(isActive ? Color.ink : Color.mutedInk)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Rectangle()
-                        .fill(Color.mutedInk.opacity(0.2))
-                        .frame(width: 0.5, height: 60)
-
 	                    // Background images
 	                    ForEach(PoemBackground.imageBackgrounds) { bg in
 	                        let isSpotlightTarget = spotlightGuide.step == .selectBackground && bg == PoemBackground.freeImageBackgrounds.first
@@ -2395,6 +2365,47 @@ private struct ShareSurfacePicker: View {
                         }
 	                        .buttonStyle(.plain)
 	                    }
+
+                    Rectangle()
+                        .fill(Color.mutedInk.opacity(0.2))
+                        .frame(width: 0.5, height: 60)
+
+                    // Shadow effects
+                    ForEach(ShadowStyle.visibleCases) { style in
+                        Button {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                selectedShadowRaw = style.rawValue
+                                selectedBgRaw = PoemBackground.none.rawValue
+                            }
+                            SensoryFeedback.lightTap()
+                        } label: {
+                            let isActive = isShadowSelected && selectedShadowRaw == style.rawValue
+                            VStack(spacing: 8) {
+                                ZStack(alignment: .bottomTrailing) {
+                                    ShadowPreviewTile(style: style)
+                                        .frame(width: 52, height: 72)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(
+                                                    isActive ? Color.cinnabar : Color.mutedInk.opacity(0.3),
+                                                    lineWidth: isActive ? 1.5 : 0.8
+                                                )
+                                        )
+
+                                    if isActive {
+                                        SelectionIndicator(size: 18)
+                                            .offset(x: 5, y: 5)
+                                            .transition(.scale(scale: 0.75).combined(with: .opacity))
+                                    }
+                                }
+                                Text(style.displayName.poemScript(script))
+                                    .font(typeface.tinySealFont)
+                                    .foregroundStyle(isActive ? Color.ink : Color.mutedInk)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 30)
                 .padding(.vertical, 2)
@@ -2402,8 +2413,8 @@ private struct ShareSurfacePicker: View {
         }
         .onAppear {
             // Legacy cleanup: an image background with the "none" shadow style
-            // predates selectable shadows — move it to a real light. 素紙
-            // (no background) intentionally keeps the none shadow.
+            // predates selectable shadows — move it to the default texture.
+            // 素紙 (no background) keeps whatever shadow the reader chose.
             if selectedShadowRaw == ShadowStyle.none.rawValue && selectedBgRaw != PoemBackground.none.rawValue {
                 selectedShadowRaw = ShadowStyle.defaultStyle.rawValue
             }
@@ -2960,128 +2971,167 @@ enum PoemArchiveStore {
     }
 }
 
-struct PoemArchiveTabView: View {
+/// Top-right entry on the composer's first page; pushes 藏詩 onto the tab's stack.
+private struct ArchiveEntryButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @Environment(\.spotlightGuide) private var spotlightGuide
+    let count: Int
+
+    private var isSpotlightTarget: Bool {
+        spotlightGuide.step == .openHistory
+    }
+
+    var body: some View {
+        NavigationLink(value: ComposeRoute.archive) {
+            HStack(spacing: 6) {
+                Image(systemName: "books.vertical")
+                    .font(.system(size: 13, weight: .medium))
+                Text("藏詩".poemScript(script))
+                    .font(typeface.tinySealFont)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Color.mutedInk)
+                }
+            }
+            .foregroundStyle(Color.ink)
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                if isSpotlightTarget {
+                    spotlightGuide.advance()
+                }
+            }
+        )
+        .spotlightTarget(.openHistory, active: isSpotlightTarget)
+        .accessibilityLabel(count > 0 ? "藏詩，\(count)首".poemScript(script) : "藏詩".poemScript(script))
+    }
+}
+
+/// 藏詩: poems saved from AI寫詩, pushed onto the composer tab's navigation stack.
+struct PoemArchiveView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     @Environment(\.spotlightGuide) private var spotlightGuide
     @State private var poems = PoemArchiveStore.load()
     @State private var poemPendingDeletion: SavedPoem?
-    @State private var showsSettings = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                PaperBackground()
+        ZStack {
+            PaperBackground()
 
-                VStack(spacing: 0) {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(AppLanguage.copy("藏詩", "Saved poems").poemScript(script))
-                                .font(typeface.titleFont)
-                                .foregroundStyle(Color.ink)
+            VStack(spacing: 0) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(AppLanguage.copy("藏詩", "Saved poems").poemScript(script))
+                            .font(typeface.titleFont)
+                            .foregroundStyle(Color.ink)
 
-                            if !poems.isEmpty {
-                                Text((AppLanguage.isEnglish
-                                    ? "\(poems.count) saved · Tap a card to read"
-                                    : "\(poems.count)首 · 輕觸詩箋重讀").poemScript(script))
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color.mutedInk.opacity(0.72))
-                            }
-                        }
-                        Spacer()
-                        SettingsButton {
-                            showsSettings = true
+                        if !poems.isEmpty {
+                            Text((AppLanguage.isEnglish
+                                ? "\(poems.count) saved · Tap a card to read"
+                                : "\(poems.count)首 · 輕觸詩箋重讀").poemScript(script))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.mutedInk.opacity(0.72))
                         }
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 20)
-                    .padding(.bottom, 22)
+                    Spacer()
+                    QuietBackButton(title: "返回") { dismiss() }
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+                .padding(.bottom, 22)
 
-                    if poems.isEmpty {
-                        Spacer()
-                        VerticalText(AppLanguage.copy("尚無藏詩", "No saved poems yet").poemScript(script), style: .small, color: .mutedInk, spacing: 7)
-                        Spacer()
-                    } else {
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVGrid(
-                                columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)],
-                                spacing: 18
-                            ) {
-                                ForEach(Array(poems.enumerated()), id: \.element.id) { index, poem in
-                                    let isSpotlightTarget = spotlightGuide.step == .openHistoryPoem && index == 0
-                                    ZStack(alignment: .topTrailing) {
-                                        NavigationLink {
-                                            SavedPoemDetailView(poem: poem) { updated in
-                                                poems = PoemArchiveStore.update(updated)
-                                            }
-                                        } label: {
-                                            SavedPoemArchiveCard(poem: poem)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .spotlightTarget(.openHistoryPoem, active: isSpotlightTarget)
-                                        .simultaneousGesture(
-                                            TapGesture().onEnded {
-                                                if isSpotlightTarget {
-                                                    spotlightGuide.advance()
-                                                }
-                                            }
-                                        )
-
-                                        Button {
-                                            poemPendingDeletion = poem
-                                        } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundStyle(Color.cinnabar)
-                                                .frame(width: 28, height: 28)
-                                                .background(.white.opacity(0.88), in: Circle())
-                                                .overlay {
-                                                    Circle()
-                                                        .stroke(Color.cinnabar.opacity(0.45), lineWidth: 0.8)
-                                                }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .padding(7)
-                                        .accessibilityLabel(AppLanguage.copy("刪除此詩", "Delete this poem").poemScript(script))
+                if poems.isEmpty {
+                    Spacer()
+                    VerticalText(AppLanguage.copy("尚無藏詩", "No saved poems yet").poemScript(script), style: .small, color: .mutedInk, spacing: 7)
+                    Spacer()
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)],
+                            spacing: 18
+                        ) {
+                            ForEach(Array(poems.enumerated()), id: \.element.id) { index, poem in
+                                let isSpotlightTarget = spotlightGuide.step == .openHistoryPoem && index == 0
+                                ZStack(alignment: .topTrailing) {
+                                    NavigationLink(value: poem.id) {
+                                        SavedPoemArchiveCard(poem: poem)
                                     }
-                                    .transition(.opacity.combined(with: .offset(y: 8)))
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 50)
-                        }
-                    }
-                }
-            }
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showsSettings) {
-                FontSettingsView()
-            }
-            .spotlightOverlay(for: [.openHistoryPoem])
-            .alert(
-                AppLanguage.copy("確定刪除此詩？", "Delete this poem?").poemScript(script),
-                isPresented: Binding(
-                    get: { poemPendingDeletion != nil },
-                    set: { isPresented in
-                        if !isPresented {
-                            poemPendingDeletion = nil
-                        }
-                    }
-                ),
-            ) {
-                Button(AppLanguage.copy("取消", "Cancel").poemScript(script), role: .cancel) {
-                    poemPendingDeletion = nil
-                }
+                                    .buttonStyle(.plain)
+                                    .spotlightTarget(.openHistoryPoem, active: isSpotlightTarget)
+                                    .simultaneousGesture(
+                                        TapGesture().onEnded {
+                                            if isSpotlightTarget {
+                                                spotlightGuide.advance()
+                                            }
+                                        }
+                                    )
 
-                Button(AppLanguage.copy("刪除", "Delete poem").poemScript(script), role: .destructive) {
-                    if let poem = poemPendingDeletion {
-                        delete(poem)
+                                    Button {
+                                        poemPendingDeletion = poem
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(Color.cinnabar)
+                                            .frame(width: 28, height: 28)
+                                            .background(.white.opacity(0.88), in: Circle())
+                                            .overlay {
+                                                Circle()
+                                                    .stroke(Color.cinnabar.opacity(0.45), lineWidth: 0.8)
+                                            }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(7)
+                                    .accessibilityLabel(AppLanguage.copy("刪除此詩", "Delete this poem").poemScript(script))
+                                }
+                                .transition(.opacity.combined(with: .offset(y: 8)))
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 50)
                     }
-                    poemPendingDeletion = nil
                 }
-            } message: {
-                Text(AppLanguage.copy("刪除後不可恢復", "This action cannot be undone.").poemScript(script))
             }
+        }
+        .navigationBarHidden(true)
+        .navigationDestination(for: SavedPoem.ID.self) { id in
+            if let poem = poems.first(where: { $0.id == id }) {
+                SavedPoemDetailView(poem: poem) { updated in
+                    poems = PoemArchiveStore.update(updated)
+                }
+            }
+        }
+        .spotlightOverlay(for: [.openHistoryPoem])
+        .alert(
+            AppLanguage.copy("確定刪除此詩？", "Delete this poem?").poemScript(script),
+            isPresented: Binding(
+                get: { poemPendingDeletion != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        poemPendingDeletion = nil
+                    }
+                }
+            ),
+        ) {
+            Button(AppLanguage.copy("取消", "Cancel").poemScript(script), role: .cancel) {
+                poemPendingDeletion = nil
+            }
+
+            Button(AppLanguage.copy("刪除", "Delete poem").poemScript(script), role: .destructive) {
+                if let poem = poemPendingDeletion {
+                    delete(poem)
+                }
+                poemPendingDeletion = nil
+            }
+        } message: {
+            Text(AppLanguage.copy("刪除後不可恢復", "This action cannot be undone.").poemScript(script))
         }
         .onAppear {
             poems = PoemArchiveStore.load()
@@ -3170,7 +3220,7 @@ private struct SavedPoemArtworkThumbnail: View {
                 layout: .portrait,
                 imageTitle: poem.imageTitle,
                 lines: poem.lines,
-                locationMark: poem.locationText,
+                locationMark: PoemLocationPreference.visible(poem.locationText),
                 lunarDateText: poem.lunarDateText,
                 dayPeriodText: poem.dayPeriodText,
                 style: poem.artworkStyle
@@ -3187,7 +3237,6 @@ private struct SavedPoemArtworkThumbnail: View {
 private struct SavedPoemDetailView: View {
     @State private var poem: SavedPoem
     let onSave: (SavedPoem) -> Void
-    @State private var showsSharePreview = false
     @State private var showsEditor = false
 
     init(poem: SavedPoem, onSave: @escaping (SavedPoem) -> Void) {
@@ -3198,72 +3247,48 @@ private struct SavedPoemDetailView: View {
     private var artworkStyle: ShareArtworkStyle { poem.artworkStyle }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            PaperBackground(backgroundOverride: artworkStyle.background, shadowStyleOverride: artworkStyle.shadow)
+        // Read the insets outside the full-bleed artwork: the tab bar's inset
+        // is only reported to views that stay inside the safe area.
+        GeometryReader { container in
+            ZStack(alignment: .top) {
+                PaperBackground(backgroundOverride: artworkStyle.background, shadowStyleOverride: artworkStyle.shadow)
 
-            GeometryReader { geometry in
-                let canvasWidth = ShareArtworkLayout.portrait.canvasSize.width
-                let scale = geometry.size.width / canvasWidth
-                // Keep the preview's typography and margins, extending its paper
-                // to fit the reading screen without changing the right-to-left layout.
-                let canvasHeight = max(
-                    ShareArtworkLayout.portrait.canvasSize.height,
-                    geometry.size.height / scale
-                )
+                // The artwork fills the whole screen, under the status bar, the
+                // quiet buttons and the tab bar, so the page reads as one sheet.
+                GeometryReader { geometry in
+                    let canvasWidth = ShareArtworkLayout.portrait.canvasSize.width
+                    let scale = geometry.size.width / canvasWidth
 
-                ScrollView(.vertical, showsIndicators: false) {
                     ConfiguredShareArtwork(
                         layout: .portrait,
                         imageTitle: poem.imageTitle,
                         lines: poem.lines,
-                        locationMark: poem.locationText,
+                        locationMark: PoemLocationPreference.visible(poem.locationText),
                         lunarDateText: poem.lunarDateText,
                         dayPeriodText: poem.dayPeriodText,
-                        style: artworkStyle
+                        style: artworkStyle,
+                        extraTopPadding: (container.safeAreaInsets.top + 56) / scale,
+                        extraBottomPadding: (container.safeAreaInsets.bottom + 12) / scale
                     )
-                    .frame(width: canvasWidth, height: canvasHeight)
+                    .frame(width: canvasWidth, height: geometry.size.height / scale)
                     .scaleEffect(scale, anchor: .topLeading)
-                    .frame(width: geometry.size.width, height: canvasHeight * scale, alignment: .topLeading)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
                 }
-            }
-            .padding(.top, 36)
-        }
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            // Separate items (plus a spacer on iOS 26) so Liquid Glass renders
-            // two distinct buttons instead of merging them into one capsule.
-            ToolbarItem(placement: .topBarTrailing) {
-                QuietBackButton(title: AppLanguage.copy("編輯", "Edit")) {
-                    showsEditor = true
-                }
-            }
+                .ignoresSafeArea()
 
-            if #available(iOS 26.0, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                QuietBackButton(title: "分享") {
-                    showsSharePreview = true
+                PaperDetailTopBar {
+                    QuietBackButton(title: AppLanguage.copy("分享", "Share")) {
+                        showsEditor = true
+                    }
                 }
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
         .fullScreenCover(isPresented: $showsEditor) {
             PoemArtworkEditorView(poem: poem) { updated in
                 onSave(updated)
                 poem = updated
             }
-        }
-        .fullScreenCover(isPresented: $showsSharePreview) {
-            PoemSharePreviewView(
-                imageTitle: poem.imageTitle,
-                lines: poem.lines,
-                locationMark: poem.locationText,
-                lunarDateText: poem.lunarDateText,
-                dayPeriodText: poem.dayPeriodText,
-                savedStyle: artworkStyle
-            )
         }
     }
 }
@@ -3741,7 +3766,7 @@ struct PaperBackground: View {
     @AppStorage(PoemBackground.storageKey) private var backgroundRawValue = PoemBackground.defaultBackground.rawValue
 
     private var shadowStyle: ShadowStyle {
-        ShadowStyle(rawValue: shadowStyleRaw) ?? .morning
+        ShadowStyle(rawValue: shadowStyleRaw) ?? .defaultStyle
     }
 
     private var background: PoemBackground {
@@ -3783,7 +3808,6 @@ private extension Color {
     static let ink = Color(red: 0.08, green: 0.075, blue: 0.07)
     static let mutedInk = Color(red: 0.34, green: 0.32, blue: 0.29)
     static let cinnabar = Color(red: 0.77, green: 0.02, blue: 0.06)
-    static let premiumGold = Color(red: 0.94, green: 0.64, blue: 0.08)
 }
 
 enum PoemFontStyle {

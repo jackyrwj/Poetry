@@ -1,3 +1,4 @@
-"CFBundleDisplayName" = "Woven Verse";
-"CFBundleName" = "Woven Verse";
-"NSLocationWhenInUseUsageDescription" = "Allow Woven Verse to use your city name in a poem's inscription.";
+"CFBundleDisplayName" = "Ink & Verse";
+"CFBundleName" = "Ink & Verse";
+"NSLocationWhenInUseUsageDescription" = "Allow Ink & Verse to use your city name in a poem's inscription.";
+"NSPhotoLibraryAddUsageDescription" = "Allow Ink & Verse to save poem images to your photo library.";

@@ -1,3 +1,4 @@
-"CFBundleDisplayName" = "织诗";
-"CFBundleName" = "织诗";
+"CFBundleDisplayName" = "诗客";
+"CFBundleName" = "诗客";
 "NSLocationWhenInUseUsageDescription" = "用于在诗歌落款处写下你所在的城市。";
+"NSPhotoLibraryAddUsageDescription" = "用于将诗笺图片保存到你的相册。";

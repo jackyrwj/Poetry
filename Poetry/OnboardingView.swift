@@ -117,9 +117,19 @@ private struct OnboardingPoemPage: View {
     @State private var revealedChars = 0
     @State private var showSeal = false
     @State private var showInscription = false
+    @State private var revealedEnglishWords = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let demoLines = ["故人西辭黃鶴樓", "煙花三月下揚州", "孤帆遠影碧空盡", "唯見長江天際流"]
     private let demoTitle = "黃鶴樓送孟浩然之廣陵"
+    private let englishTitle = "Seeing Meng Haoran Off to Guangling"
+    private let englishAuthor = "Li Bai"
+    private let translationLines = [
+        "My old friend bids farewell at Yellow Crane Tower,",
+        "sailing for Yangzhou through the misty blossoms of spring.",
+        "His lone sail fades into the far blue sky—",
+        "only the Yangtze remains, flowing to the edge of heaven."
+    ]
     private let sealName = "青莲居士"
     private let inscriptionDate = "開元十八年\u{2009}暮春"
     private let inscriptionPlace = "於\u{2009}黃鶴樓"
@@ -192,7 +202,6 @@ private struct OnboardingPoemPage: View {
                                 fontSize: 18.5,
                                 spacing: 7
                             )
-                            .opacity(count > 0 ? 1 : 0)
                         }
 
                         // Title column
@@ -205,10 +214,16 @@ private struct OnboardingPoemPage: View {
 
                 Spacer()
 
+                // English readers get the translation beneath the original,
+                // mirroring how the reading view pairs the two.
+                if AppLanguage.isEnglish {
+                    englishTranslation
+                        .padding(.horizontal, 30)
+                }
+
                 Spacer().frame(height: 120)
             }
         }
-        .animation(.easeOut(duration: 0.3), value: revealedChars)
         .animation(.easeOut(duration: 0.6), value: showSeal)
         .animation(.easeOut(duration: 0.6), value: showInscription)
         .task { await revealPoem() }
@@ -219,12 +234,15 @@ private struct OnboardingPoemPage: View {
         revealedChars = 0
         showSeal = false
         showInscription = false
+        revealedEnglishWords = 0
 
         // Initial pause
         try? await Task.sleep(nanoseconds: 600_000_000)
 
-        let lineDelay: UInt64 = 500_000_000
-        let characterDelay: UInt64 = 160_000_000
+        // Characters overlap while they come into focus, so a short step
+        // keeps the reveal brisk without feeling like a typewriter.
+        let lineDelay: UInt64 = 220_000_000
+        let characterDelay: UInt64 = 70_000_000
 
         for lineIndex in demoLines.indices {
             if lineIndex > 0 {
@@ -254,6 +272,72 @@ private struct OnboardingPoemPage: View {
         await MainActor.run {
             showSeal = true
         }
+
+        guard AppLanguage.isEnglish else { return }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        let wordDelay: UInt64 = 55_000_000
+        let englishGroups = [englishTitleWords, [englishAuthor]] + translationLineWords
+        for (groupIndex, group) in englishGroups.enumerated() {
+            if groupIndex > 0 {
+                try? await Task.sleep(nanoseconds: 140_000_000)
+            }
+            for _ in group {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    revealedEnglishWords += 1
+                }
+                try? await Task.sleep(nanoseconds: wordDelay)
+            }
+        }
+    }
+
+    private var englishTitleWords: [String] {
+        englishTitle.split(separator: " ").map(String.init)
+    }
+
+    private var translationLineWords: [[String]] {
+        translationLines.map { $0.split(separator: " ").map(String.init) }
+    }
+
+    /// Index of a translation line's first word in the overall English reveal
+    /// order (title words, then the author, then each line).
+    private func englishWordOffset(forLine lineIndex: Int) -> Int {
+        englishTitleWords.count + 1 + translationLineWords.prefix(lineIndex).reduce(0) { $0 + $1.count }
+    }
+
+    private var englishTranslation: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                OnboardingWordFlow(wordSpacing: 4.5, lineSpacing: 2) {
+                    ForEach(Array(englishTitleWords.enumerated()), id: \.offset) { index, word in
+                        Text(word)
+                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .italic()
+                            .foregroundStyle(Color.ink)
+                            .modifier(InkReveal(visible: index < revealedEnglishWords, reduceMotion: reduceMotion, blurRadius: 8, startScale: 1.15, startOffset: -4))
+                    }
+                }
+                Text(englishAuthor)
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(Color.mutedInk)
+                    .modifier(InkReveal(visible: englishTitleWords.count < revealedEnglishWords, reduceMotion: reduceMotion, blurRadius: 6, startScale: 1.05, startOffset: -3))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(translationLineWords.enumerated()), id: \.offset) { lineIndex, words in
+                    let offset = englishWordOffset(forLine: lineIndex)
+                    OnboardingWordFlow(wordSpacing: 3.5, lineSpacing: 2) {
+                        ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+                            Text(word)
+                                .font(.system(size: 14, weight: .light, design: .serif))
+                                .foregroundStyle(Color.ink.opacity(0.85))
+                                .modifier(InkReveal(visible: offset + index < revealedEnglishWords, reduceMotion: reduceMotion, blurRadius: 7, startScale: 1.15, startOffset: -4))
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Onboarding-local view builders
@@ -266,7 +350,7 @@ private struct OnboardingPoemPage: View {
                 Text(String(character))
                     .font(poemFont(size: fontSize))
                     .foregroundStyle(Color.ink)
-                    .opacity(index < visibleCount ? 1 : 0)
+                    .modifier(InkReveal(visible: index < visibleCount, reduceMotion: reduceMotion, blurRadius: 9, startScale: 1.35, startOffset: -6))
             }
         }
         .fixedSize()
@@ -344,21 +428,107 @@ private struct OnboardingPoemPage: View {
 
 // MARK: - Page 3: Seal Name Setup
 
+/// Condenses a glyph or word out of a soft blur, like ink settling into
+/// rice paper, instead of popping it in. Reduce Motion keeps only the fade.
+private struct InkReveal: ViewModifier {
+    let visible: Bool
+    let reduceMotion: Bool
+    let blurRadius: CGFloat
+    let startScale: CGFloat
+    let startOffset: CGFloat
+
+    func body(content: Content) -> some View {
+        let settled = visible || reduceMotion
+        content
+            .opacity(visible ? 1 : 0)
+            .blur(radius: settled ? 0 : blurRadius)
+            .scaleEffect(settled ? 1 : startScale)
+            .offset(y: settled ? 0 : startOffset)
+            .animation(.easeOut(duration: 0.75), value: visible)
+    }
+}
+
+/// Wraps words left-to-right like a paragraph, so each word can animate on
+/// its own while the line still reads as ordinary text.
+private struct OnboardingWordFlow: Layout {
+    var wordSpacing: CGFloat
+    var lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(width: bounds.width, subviews: subviews) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y + row.height - size.height), proposal: .unspecified)
+                x += size.width + wordSpacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(width maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = current.indices.isEmpty ? size.width : current.width + wordSpacing + size.width
+            if needed > maxWidth, !current.indices.isEmpty {
+                rows.append(current)
+                current = Row()
+            }
+            current.width = current.indices.isEmpty ? size.width : current.width + wordSpacing + size.width
+            current.height = max(current.height, size.height)
+            current.indices.append(index)
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
+    }
+}
+
 private struct OnboardingSealPage: View {
-    @AppStorage("sealName") private var sealName = ""
-    @AppStorage(NameTransliterator.overrideStorageKey) private var transliterationOverride = ""
+    @AppStorage(SealStampView.storageKey) private var sealName = ""
     @State private var editingName = ""
     @State private var suggestions: [String] = []
     @State private var shouldWarmKeyboard = false
     @FocusState private var nameFieldFocused: Bool
 
-    private let sealFontName = "FZXZTFW--GB1-0"
+    private let suggestionRowID = "suggestionRow"
 
-    /// Pre-built default names shown on first load
-    private let defaultSuggestions = ["聽松居士", "半山散人", "夜雨書生"]
+    /// Pre-built default names shown on first load. English readers get given
+    /// names, which the seal transliterates into Chinese (Emily → 艾米莉).
+    private var defaultSuggestions: [String] {
+        AppLanguage.isEnglish ? ["Emily", "Oliver", "Sophia"] : ["聽松居士", "半山散人", "夜雨書生"]
+    }
 
     /// Offline pool for the dice button; users can always type their own.
-    private let penNamePool = [
+    private var penNamePool: [String] {
+        AppLanguage.isEnglish ? englishNamePool : chinesePenNamePool
+    }
+
+    private let englishNamePool = [
+        "Emily", "Oliver", "Sophia",
+        "James", "Grace", "Henry",
+        "Lucy", "Daniel", "Olivia",
+        "William", "Chloe", "Samuel",
+        "Hannah", "Thomas", "Lily",
+        "Noah", "Rose", "Owen"
+    ]
+
+    private let chinesePenNamePool = [
         "聽松居士", "半山散人", "夜雨書生",
         "松間隱客", "雲水閒人", "青山居士",
         "抱朴軒主", "枕流齋主", "梅溪釣叟",
@@ -369,18 +539,6 @@ private struct OnboardingSealPage: View {
 
     private var fullName: String {
         editingName.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var previewName: String {
-        String(NameTransliterator.rawSealText(fullName).prefix(4))
-    }
-
-    private var sealChars: [String] {
-        if let glyphs = NameTransliterator.glyphs(for: fullName, storedOverride: transliterationOverride) {
-            return glyphs.map(\.value)
-        }
-        let chars = Array(simplifiedSealText(previewName)).map(String.init)
-        return Array(chars.prefix(4))
     }
 
     var body: some View {
@@ -400,7 +558,7 @@ private struct OnboardingSealPage: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(AppLanguage.copy("客官貴姓", "What should your seal say?"))
                         .font(.system(size: 28, weight: .light, design: .serif))
-                    Text(AppLanguage.copy("留個名號，好為你刻一方印", "Choose a name or pen name for your personal seal."))
+                    Text(AppLanguage.copy("留個名號，好為你刻一方印", "Type your name and we'll carve it in Chinese."))
                         .font(.system(size: 14, design: .serif))
                         .foregroundStyle(Color.mutedInk)
                         .tracking(AppLanguage.isEnglish ? 0 : 1)
@@ -419,7 +577,7 @@ private struct OnboardingSealPage: View {
                 VStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
-                            TextField("", text: $editingName, prompt: Text(AppLanguage.copy("姓名或雅號", "Name or pen name"))
+                            TextField("", text: $editingName, prompt: Text(AppLanguage.copy("姓名或雅號", "Your name"))
                                 .font(.system(size: 15, design: .serif))
                                 .foregroundStyle(Color.mutedInk.opacity(0.4)))
                                 .font(.system(size: 16, design: .serif))
@@ -446,7 +604,7 @@ private struct OnboardingSealPage: View {
                                     }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(AppLanguage.copy("生成雅號", "Suggest a pen name"))
+                            .accessibilityLabel(AppLanguage.copy("生成雅號", "Suggest a name"))
                         }
 
                         Rectangle()
@@ -464,30 +622,39 @@ private struct OnboardingSealPage: View {
 
                     // Suggestion pills
                     if !suggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(suggestions, id: \.self) { suggestion in
-                                    Button {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            editingName = suggestion
-                                            saveName()
-                                        }
-                                    } label: {
-                                        Text(suggestion)
-                                            .font(.system(size: 14, design: .serif))
-                                            .foregroundStyle(editingName == suggestion ? .white : Color.ink)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 9)
-                                            .background {
-                                                Capsule()
-                                                    .fill(editingName == suggestion ? Color.cinnabar : Color.white.opacity(0.7))
-                                                    .stroke(editingName == suggestion ? Color.cinnabar : Color.mutedInk.opacity(0.3), lineWidth: 0.8)
+                        ScrollViewReader { proxy in
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(suggestions, id: \.self) { suggestion in
+                                        Button {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                                editingName = suggestion
+                                                saveName()
                                             }
+                                        } label: {
+                                            Text(suggestion)
+                                                .font(.system(size: 14, design: .serif))
+                                                .foregroundStyle(editingName == suggestion ? .white : Color.ink)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 9)
+                                                .background {
+                                                    Capsule()
+                                                        .fill(editingName == suggestion ? Color.cinnabar : Color.white.opacity(0.7))
+                                                        .stroke(editingName == suggestion ? Color.cinnabar : Color.mutedInk.opacity(0.3), lineWidth: 0.8)
+                                                }
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
                                 }
+                                .padding(.horizontal, 30)
+                                // Swap a new batch in place; animating it makes every
+                                // pill slide to its new position and the row jumps.
+                                .animation(nil, value: suggestions)
+                                .id(suggestionRowID)
                             }
-                            .padding(.horizontal, 30)
+                            .onChange(of: suggestions) {
+                                proxy.scrollTo(suggestionRowID, anchor: .leading)
+                            }
                         }
                         .transition(.opacity.combined(with: .offset(y: 8)))
                     }
@@ -496,7 +663,7 @@ private struct OnboardingSealPage: View {
                 Spacer()
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: previewName)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: fullName)
         .onAppear {
             // Pre-fill: use saved name, or pick a random default
             if sealName.isEmpty {
@@ -519,60 +686,11 @@ private struct OnboardingSealPage: View {
 
     // MARK: - Seal Preview
 
+    /// The same stamp the app renders on saved poems, so the transliteration
+    /// and seal style shown here match what the reader will get later.
     private var sealPreview: some View {
-        let size: CGFloat = 80
-        let charSize = max(20, size * 0.43)
-        return ZStack {
-            RoundedRectangle(cornerRadius: max(1, size * 0.025))
-                .fill(Color.cinnabar)
-
-            RoundedRectangle(cornerRadius: max(1, size * 0.025))
-                .stroke(Color.white.opacity(0.96), lineWidth: max(1.4, size * 0.045))
-                .padding(size * 0.045)
-
-            // Right-to-left, top-to-bottom layout
-            HStack(spacing: size * 0.014) {
-                // Left column: chars[2], chars[3]
-                VStack(spacing: size * 0.004) {
-                    if sealChars.count > 2 {
-                        Text(sealChars[2])
-                            .font(sealFont(size: charSize))
-                            .foregroundStyle(.white)
-                            .frame(width: size * 0.40, height: size * 0.40)
-                    }
-                    if sealChars.count > 3 {
-                        Text(sealChars[3])
-                            .font(sealFont(size: charSize))
-                            .foregroundStyle(.white)
-                            .frame(width: size * 0.40, height: size * 0.40)
-                    }
-                }
-                // Right column: chars[0], chars[1]
-                VStack(spacing: size * 0.004) {
-                    if !sealChars.isEmpty {
-                        Text(sealChars[0])
-                            .font(sealFont(size: charSize))
-                            .foregroundStyle(.white)
-                            .frame(width: size * 0.40, height: size * 0.40)
-                    }
-                    if sealChars.count > 1 {
-                        Text(sealChars[1])
-                            .font(sealFont(size: charSize))
-                            .foregroundStyle(.white)
-                            .frame(width: size * 0.40, height: size * 0.40)
-                    }
-                }
-            }
-            .padding(size * 0.072)
-        }
-        .frame(width: size, height: size)
-    }
-
-    private func sealFont(size: CGFloat) -> Font {
-        if UIFont(name: sealFontName, size: 12) != nil {
-            return Font.custom(sealFontName, size: size)
-        }
-        return .system(size: size, weight: .bold, design: .serif)
+        SealStampView(name: fullName, size: 80)
+            .opacity(fullName.isEmpty ? 0 : 1)
     }
 
     // MARK: - Actions
@@ -587,8 +705,9 @@ private struct OnboardingSealPage: View {
         let current = fullName
         let pick = penNamePool.filter { $0 != current }.randomElement() ?? current
         let rest = penNamePool.filter { $0 != pick }.shuffled().prefix(5)
+        // Keep the chosen name first so the selected pill is always in view.
+        suggestions = [pick] + rest
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-            suggestions = ([pick] + rest).shuffled()
             editingName = pick
             saveName()
         }
@@ -605,10 +724,40 @@ private struct OnboardingSharePage: View {
     private let demoTitle = "黃鶴樓送孟浩然之廣陵"
     private let demoSealName = "青莲居士"
     private let demoDate = "開元十八年\u{2009}暮春"
-    private let demoPlace = "於\u{2009}黃鶴樓"
+    private let demoColophon = "錄李白詩於黃鶴樓"
     private let backgrounds: [PoemBackground] = [.boat, .bamboo, .moon, .lotus, .plum]
 
     private var currentBg: PoemBackground { backgrounds[currentBgIndex] }
+
+    /// The same style a fresh share sheet opens with — vertical verse, the
+    /// default typeface and seal — so the demo matches what users will share.
+    private var demoStyle: ShareArtworkStyle {
+        let defaults = ShareArtworkStyle.defaultPreferences
+        return ShareArtworkStyle(
+            background: currentBg,
+            typeface: defaults.typeface,
+            script: .traditional,
+            usesVerticalText: true,
+            sealName: demoSealName,
+            sealStyle: defaults.sealStyle,
+            transliteration: "",
+            shadow: defaults.shadow
+        )
+    }
+
+    private var demoTranslation: ShareTranslation? {
+        guard AppLanguage.isEnglish else { return nil }
+        return ShareTranslation(
+            title: "Seeing Meng Haoran Off to Guangling",
+            byline: "Li Bai",
+            text: [
+                "My old friend bids farewell at Yellow Crane Tower,",
+                "sailing for Yangzhou through the misty blossoms of spring.",
+                "His lone sail fades into the far blue sky—",
+                "only the Yangtze remains, flowing to the edge of heaven."
+            ].joined(separator: "\n")
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -680,18 +829,15 @@ private struct OnboardingSharePage: View {
                     let previewScale = maxPreviewW / artworkW
                     let previewH = artworkH * previewScale
 
-                    SharePoemArtwork(
+                    ConfiguredShareArtwork(
                         layout: .portrait,
                         imageTitle: demoTitle,
                         lines: demoLines,
-                        locationMark: demoPlace,
+                        locationMark: demoColophon,
                         lunarDateText: demoDate,
                         dayPeriodText: "",
-                        sealName: demoSealName,
-                        showsLight: true,
-                        showsSeal: true,
-                        showsTitle: false,
-                        background: currentBg
+                        style: demoStyle,
+                        translation: demoTranslation
                     )
                     .frame(width: artworkW, height: artworkH)
                     .scaleEffect(previewScale, anchor: .center)
@@ -705,7 +851,7 @@ private struct OnboardingSharePage: View {
                         .tracking(AppLanguage.isEnglish ? 0 : 1)
                 }
                 .padding(.horizontal, 30)
-                .animation(.easeOut(duration: 0.4), value: currentBgIndex)
+                .animation(.easeOut(duration: 0.3), value: currentBgIndex)
 
                 Spacer()
             }
@@ -721,9 +867,9 @@ private struct OnboardingSharePage: View {
 
     private func cycleBg() {
         guard animating else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             guard animating else { return }
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(.easeInOut(duration: 0.3)) {
                 currentBgIndex = (currentBgIndex + 1) % backgrounds.count
             }
             cycleBg()

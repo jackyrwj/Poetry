@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import CoreFoundation
+import RevenueCat
 import StoreKit
 
 private func compactInscriptionText(_ text: String) -> String {
@@ -61,16 +62,17 @@ struct PaywallView: View {
     @Environment(\.poemScript) private var script
     @ObservedObject private var store = StoreManager.shared
     @State private var selectedPlan: Plan = .monthly
+    @State private var contentHeight: CGFloat = 0
     let onUnlock: () -> Void
 
     private static var features: [String] {
         AppLanguage.isEnglish
-            ? ["Unlimited classical Chinese poem creation", "All included poems and poets", "Premium typefaces, seals, and backgrounds"]
-            : ["不限次數創作古詩", "全部已收錄詩詞與詩人", "高級字體", "朱印樣式·白文", "會員紙面與背景"]
+            ? ["Every included poem", "Every included poet", "Premium typefaces", "White seal style", "Premium papers and backgrounds"]
+            : ["不限次數創作古詩", "全部已收錄詩詞", "全部已收錄詩人", "高級字體", "朱印樣式·白文", "會員紙面與背景"]
     }
 
-    private func priceText(_ product: Product?) -> String {
-        product?.displayPrice ?? "…"
+    private func priceText(_ product: StoreProduct?) -> String {
+        product?.localizedPriceString ?? "…"
     }
 
     var body: some View {
@@ -78,8 +80,13 @@ struct PaywallView: View {
             PaperBackground()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
-                    HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 26) {
+                        HStack {
+                            Spacer()
+                            QuietBackButton(title: "關閉", spotlightStep: .returnFromShare) { dismiss() }
+                        }
+                        .padding(.bottom, -12)
+
                         VStack(alignment: .leading, spacing: 10) {
                             Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
                                 .font(typeface.titleFont)
@@ -88,41 +95,47 @@ struct PaywallView: View {
                                 .font(typeface.smallFont)
                                 .foregroundStyle(Color.mutedInk)
                         }
-                        Spacer()
-                        QuietBackButton(title: "關閉", spotlightStep: .returnFromShare) { dismiss() }
-                    }
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(Self.features, id: \.self) { feature in
-                            PaywallFeatureRow(text: feature, compact: false)
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(Self.features, id: \.self) { feature in
+                                PaywallFeatureRow(text: feature, compact: false)
+                            }
+                        }
+
+                        if store.hasCompleteProductCatalog {
+                            planSelection
+                        } else {
+                            productLoadingSection
+                        }
+
+                        if let error = store.purchaseError {
+                            Text(error.poemScript(script))
+                                .font(typeface.tinySealFont)
+                                .foregroundStyle(Color.cinnabar)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+
+                        footerActions
+
+                    }
+                    .padding(.horizontal, 30)
+                    .padding(.top, 20)
+                    .padding(.bottom, 28)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: PaywallContentHeightKey.self, value: proxy.size.height)
                         }
                     }
-
-                    if store.hasCompleteProductCatalog {
-                        planSelection
-                    } else {
-                        productLoadingSection
-                    }
-
-                    if let error = store.purchaseError {
-                        Text(error.poemScript(script))
-                            .font(typeface.tinySealFont)
-                            .foregroundStyle(Color.cinnabar)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-
-                    footerActions
-
-                }
-                .padding(.horizontal, 30)
-                .padding(.top, 28)
-                .padding(.bottom, 36)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
+        .onPreferenceChange(PaywallContentHeightKey.self) { contentHeight = $0 }
         .task {
             await store.loadProducts()
         }
-        .presentationDetents([.large])
+        // Size the sheet to its content so there is no empty band above or
+        // between sections; the system caps it at full height on small screens.
+        .presentationDetents(contentHeight > 0 ? [.height(contentHeight)] : [.large])
         .presentationDragIndicator(.visible)
         .presentationContentInteraction(.scrolls)
     }
@@ -139,7 +152,7 @@ struct PaywallView: View {
             }
             PaywallPlanButton(
                 title: AppLanguage.copy("雅集年度", "Pro yearly"),
-                price: "\(priceText(store.yearly))/\(AppLanguage.copy("年", "year"))",
+                price: priceText(store.yearly),
                 note: AppLanguage.copy("每年自動續訂，可隨時取消", "Renews yearly. Cancel anytime."),
                 isSelected: selectedPlan == .yearly
             ) {
@@ -170,7 +183,7 @@ struct PaywallView: View {
         }
     }
 
-    private var selectedProduct: Product? {
+    private var selectedProduct: StoreProduct? {
         switch selectedPlan {
         case .monthly:
             return store.monthly
@@ -181,7 +194,7 @@ struct PaywallView: View {
         }
     }
 
-    private func purchaseAndUnlock(_ product: Product?) async {
+    private func purchaseAndUnlock(_ product: StoreProduct?) async {
         guard let product else { return }
         let purchased = await store.purchase(product)
         if purchased {
@@ -307,7 +320,19 @@ struct PaywallView: View {
     }
 
     private var monthlyPlanNote: String {
+        if let monthly = store.monthly, let offer = store.monthlyIntroOffer {
+            return AppLanguage.isEnglish
+                ? "First month \(offer.localizedPriceString), then \(monthly.localizedPriceString)/month. Cancel anytime."
+                : "首月 \(offer.localizedPriceString)，之後 \(monthly.localizedPriceString)/月自動續訂，可隨時取消"
+        }
         return AppLanguage.copy("每月自動續訂，可隨時取消", "Renews monthly. Cancel anytime.")
+    }
+}
+
+private struct PaywallContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -337,8 +362,11 @@ private struct PremiumStatusView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    PremiumFeatureRow(icon: "infinity", text: AppLanguage.copy("不限次數創作古詩", "Unlimited classical Chinese poem creation"))
-                    PremiumFeatureRow(icon: "person.text.rectangle", text: AppLanguage.copy("全部已收錄詩詞與詩人", "All included poems and poets"))
+                    if !AppLanguage.isEnglish {
+                        PremiumFeatureRow(icon: "infinity", text: "不限次數創作古詩")
+                    }
+                    PremiumFeatureRow(icon: "book.closed", text: AppLanguage.copy("全部已收錄詩詞", "Every included poem"))
+                    PremiumFeatureRow(icon: "person.text.rectangle", text: AppLanguage.copy("全部已收錄詩人", "Every included poet"))
                     PremiumFeatureRow(icon: "textformat", text: AppLanguage.copy("全部字體", "All typefaces"))
                     PremiumFeatureRow(icon: "seal", text: AppLanguage.copy("朱印樣式：朱文與白文", "Seal styles, including white seals"))
                     PremiumFeatureRow(icon: "photo.artframe", text: AppLanguage.copy("全部紙面與背景", "All paper and backgrounds"))
@@ -421,16 +449,9 @@ private struct PaywallFeatureRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: compact ? 7 : 10) {
-            Group {
-                if AppLanguage.isEnglish {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                } else {
-                    Text("印".poemScript(script))
-                        .font(typeface.tinySealFont)
-                }
-            }
-            .foregroundStyle(.white)
+            Image(systemName: "checkmark")
+                .font(.system(size: compact ? 9 : 11, weight: .bold))
+                .foregroundStyle(.white)
             .frame(width: compact ? 18 : 22, height: compact ? 18 : 22)
             .background(Circle().fill(Color.cinnabar))
             Text(text.poemScript(script))
@@ -486,43 +507,49 @@ private struct PaywallPlanButton: View {
     }
 }
 
-/// Shared settings entry for every tab's root page.
-struct SettingsButton: View {
-    @Environment(\.poemScript) private var script
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(ClassicPalette.ink)
-                .frame(width: 38, height: 38)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(AppLanguage.copy("設置", "Settings").poemScript(script))
-    }
-}
-
 enum AppReviewPrompt {
     static let completedFirstPoemKey = "poetry.completedFirstPoem"
     static let requestedAfterFirstPoemKey = "poetry.requestedReviewAfterFirstPoem"
+    private static let lastRequestKey = "poetry.lastReviewRequestDate"
+    private static let favoriteMilestonesKey = "poetry.reviewedFavoriteMilestones"
+    /// Saving a poem is the clearest sign someone is enjoying the app.
+    private static let favoriteMilestones = [3, 12]
+    private static let minimumInterval: TimeInterval = 30 * 24 * 3600
+
+    /// Keeps other prompts (such as the widget guide) from landing on top of this one.
+    static var wasRequestedRecently: Bool {
+        guard let last = UserDefaults.standard.object(forKey: lastRequestKey) as? Date else { return false }
+        return Date().timeIntervalSince(last) < 24 * 3600
+    }
+
+    /// Asks once when the saved-poem count first reaches each milestone, at
+    /// least 30 days after the previous request (the system also caps it at
+    /// three times a year).
+    static func requestAfterFavoriteIfNeeded(favoriteCount: Int) {
+        let defaults = UserDefaults.standard
+        var reached = Set(defaults.array(forKey: favoriteMilestonesKey) as? [Int] ?? [])
+        guard let milestone = favoriteMilestones.last(where: { favoriteCount >= $0 }),
+              !reached.contains(milestone) else { return }
+        reached.formUnion(favoriteMilestones.filter { $0 <= milestone })
+        defaults.set(Array(reached), forKey: favoriteMilestonesKey)
+
+        if let last = defaults.object(forKey: lastRequestKey) as? Date,
+           Date().timeIntervalSince(last) < minimumInterval { return }
+        // Let the save animation finish before the system sheet appears.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { request() }
+    }
 
     static func request() {
-        let requestBlock = {
+        Task { @MainActor in
             guard let scene = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .first(where: { $0.activationState == .foregroundActive }) else {
                 return
             }
 
-            SKStoreReviewController.requestReview(in: scene)
-        }
-
-        if Thread.isMainThread {
-            requestBlock()
-        } else {
-            DispatchQueue.main.async(execute: requestBlock)
+            // Only record a request that was actually made.
+            UserDefaults.standard.set(Date(), forKey: lastRequestKey)
+            AppStore.requestReview(in: scene)
         }
     }
 }
@@ -626,8 +653,38 @@ struct QuietBackButton: View {
     }
 }
 
-struct FontSettingsView: View {
+/// Back on the left and the page's quiet actions on the right, written on the
+/// paper itself rather than in a navigation bar, so the artwork reads as one sheet.
+struct PaperDetailTopBar<Actions: View>: View {
     @Environment(\.dismiss) private var dismiss
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            QuietBackButton(title: "返回") { dismiss() }
+            Spacer()
+            actions()
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 4)
+    }
+}
+
+/// Pages that draw their own back button hide the system bar, which would
+/// otherwise also switch off the edge swipe back.
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer !== interactivePopGestureRecognizer || viewControllers.count > 1
+    }
+}
+
+/// 「我的」tab: membership, reading defaults, personal seal and app info.
+struct ProfileView: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     @AppStorage(PoemBackground.storageKey) private var selectedBgRaw = PoemBackground.defaultBackground.rawValue
@@ -638,166 +695,237 @@ struct FontSettingsView: View {
     @AppStorage(SealStampView.storageKey) private var sealName = ""
     @AppStorage(SealStampStyle.storageKey) private var selectedSealStyleRaw = SealStampStyle.zhuwen.rawValue
     @AppStorage(NameTransliterator.overrideStorageKey) private var transliteration = ""
+    @AppStorage(PoemLocationPreference.storageKey) private var showsInscriptionPlace = true
     @FocusState private var sealNameFocused: Bool
     @ObservedObject private var store = StoreManager.shared
     @State private var showsPaywall = false
-    @State private var showsAbout = false
     @State private var showsPremiumStatus = false
+    @State private var legalDocument: LegalDocument?
+    @State private var showsContact = false
+    @State private var showsDeveloperLetter = false
+    @State private var showsWidgetGuide = false
+    @State private var showsMusicCredits = false
 
     private var hasPremiumAccess: Bool {
         store.isPremium
     }
 
     var body: some View {
-        ZStack {
-            PaperBackground()
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                PaperBackground()
+                    .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    // Membership banner
-                    if !hasPremiumAccess {
-                        Button {
-                            showsPaywall = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                MembershipIndicator()
-                                    .foregroundStyle(.white)
-                                    .frame(width: 32, height: 32)
-                                    .background(Circle().fill(Color.cinnabar))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
-                                        .font(typeface.bodyFont)
-                                        .foregroundStyle(Color.ink)
-                                    Text(AppLanguage.copy("不限次數創作古詩，解鎖全部已收錄詩詞與詩人、字體、朱印與紙面", "Create unlimited classical Chinese poems and unlock all included poems and poets, typefaces, seals, and papers.").poemScript(script))
-                                        .font(typeface.tinySealFont)
-                                        .foregroundStyle(Color.mutedInk)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        Text(AppLanguage.copy("我的", "Settings").poemScript(script))
+                            .font(typeface.font(size: 29))
+                            .foregroundStyle(Color.ink)
+                            .frame(minHeight: 38)
+
+                        // Membership banner
+                        if !hasPremiumAccess {
+                            Button {
+                                showsPaywall = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    MembershipIndicator()
+                                        .foregroundStyle(.white)
+                                        .frame(width: 32, height: 32)
+                                        .background(Circle().fill(Color.cinnabar))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
+                                            .font(typeface.bodyFont)
+                                            .foregroundStyle(Color.ink)
+                                        Text(AppLanguage.copy("不限次數創作古詩，解鎖全部已收錄詩詞與詩人、字體、朱印與紙面", "Unlock every included poem and poet, plus premium typefaces, seals, and papers.").poemScript(script))
+                                            .font(typeface.tinySealFont)
+                                            .foregroundStyle(Color.mutedInk)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color.mutedInk.opacity(0.5))
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(Color.mutedInk.opacity(0.5))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.white.opacity(0.6))
+                                        .stroke(Color.cinnabar.opacity(0.2), lineWidth: 0.8)
+                                }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .background {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.white.opacity(0.6))
-                                    .stroke(Color.cinnabar.opacity(0.2), lineWidth: 0.8)
+                            .buttonStyle(.plain)
+                        } else {
+                            Button {
+                                showsPremiumStatus = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    MembershipIndicator()
+                                        .foregroundStyle(.white)
+                                        .frame(width: 32, height: 32)
+                                        .background(Circle().fill(Color.cinnabar.opacity(0.7)))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(AppLanguage.copy("雅集會員已開通", "Pro active").poemScript(script))
+                                            .font(typeface.bodyFont)
+                                            .foregroundStyle(Color.ink)
+                                        Text(AppLanguage.copy("查看權益與訂閱狀態", "View benefits and subscription status").poemScript(script))
+                                            .font(typeface.tinySealFont)
+                                            .foregroundStyle(Color.mutedInk)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color.mutedInk.opacity(0.5))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.white.opacity(0.6))
+                                        .stroke(Color.cinnabar.opacity(0.15), lineWidth: 0.8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text(AppLanguage.copy("顯示與閱讀", "Display & reading").poemScript(script))
+                                .font(typeface.bodyFont)
+                                .foregroundStyle(Color.ink)
+                            Text(AppLanguage.copy("用於日常閱讀，並作為新分享圖的默認外觀。", "Used throughout the app and as the default for new share images.").poemScript(script))
+                                .font(typeface.tinySealFont)
+                                .foregroundStyle(Color.mutedInk)
+
+                            ArtworkPaperControls(
+                                selectedShadowRaw: $selectedShadowRaw,
+                                selectedBgRaw: $selectedBgRaw,
+                                horizontalPadding: 0,
+                                participatesInGuide: false
+                            ) { showsPaywall = true }
+
+                            ArtworkTextControls(
+                                selectedTypefaceRaw: $selectedTypefaceRaw,
+                                selectedScriptRaw: $selectedScriptRaw,
+                                usesVerticalText: $usesVerticalText,
+                                showsLayoutPicker: false
+                            ) { showsPaywall = true }
+                        }
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(AppLanguage.copy("個人朱印", "Personal seal").poemScript(script))
+                                .font(typeface.bodyFont)
+                                .foregroundStyle(Color.ink)
+                            Text(AppLanguage.copy("作為新作品與分享圖的默認署名。", "Your default signature for new poems and share images.").poemScript(script))
+                                .font(typeface.tinySealFont)
+                                .foregroundStyle(Color.mutedInk)
+                            ArtworkSealControls(
+                                sealName: $sealName,
+                                selectedSealStyleRaw: $selectedSealStyleRaw,
+                                transliteration: $transliteration,
+                                sealNameFocused: $sealNameFocused
+                            ) { showsPaywall = true }
+                        }
+
+                        Toggle(isOn: $showsInscriptionPlace) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(AppLanguage.copy("落款顯示地點", "Show place in colophon").poemScript(script))
+                                    .font(typeface.bodyFont)
+                                    .foregroundStyle(Color.ink)
+                                Text(AppLanguage.copy("關閉後，新作品與分享圖不再寫入所在城市，已保存作品的地點也會隱藏。", "When off, new poems and share images leave out your city, and places on saved poems are hidden.").poemScript(script))
+                                    .font(typeface.tinySealFont)
+                                    .foregroundStyle(Color.mutedInk)
                             }
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        Button {
-                            showsPremiumStatus = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                MembershipIndicator()
-                                    .foregroundStyle(.white)
-                                    .frame(width: 32, height: 32)
-                                    .background(Circle().fill(Color.cinnabar.opacity(0.7)))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(AppLanguage.copy("雅集會員已開通", "Pro active").poemScript(script))
-                                        .font(typeface.bodyFont)
-                                        .foregroundStyle(Color.ink)
-                                    Text(AppLanguage.copy("查看權益與訂閱狀態", "View benefits and subscription status").poemScript(script))
-                                        .font(typeface.tinySealFont)
-                                        .foregroundStyle(Color.mutedInk)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(Color.mutedInk.opacity(0.5))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .background {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.white.opacity(0.6))
-                                    .stroke(Color.cinnabar.opacity(0.15), lineWidth: 0.8)
-                            }
-                        }
-                        .buttonStyle(.plain)
+                        .tint(Color.cinnabar)
+
+                        aboutSection
+
+                        Text(appVersionText)
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Color.mutedInk.opacity(0.6))
+                            .frame(maxWidth: .infinity)
                     }
-
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text(AppLanguage.copy("顯示與閱讀", "Display & reading").poemScript(script))
-                            .font(typeface.bodyFont)
-                            .foregroundStyle(Color.ink)
-                        Text(AppLanguage.copy("用於日常閱讀，並作為新分享圖的默認外觀。", "Used throughout the app and as the default for new share images.").poemScript(script))
-                            .font(typeface.tinySealFont)
-                            .foregroundStyle(Color.mutedInk)
-
-                        ArtworkPaperControls(
-                            selectedShadowRaw: $selectedShadowRaw,
-                            selectedBgRaw: $selectedBgRaw,
-                            horizontalPadding: 0,
-                            participatesInGuide: false
-                        ) { showsPaywall = true }
-
-                        ArtworkTextControls(
-                            selectedTypefaceRaw: $selectedTypefaceRaw,
-                            selectedScriptRaw: $selectedScriptRaw,
-                            usesVerticalText: $usesVerticalText,
-                            showsLayoutPicker: false
-                        ) { showsPaywall = true }
-                    }
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(AppLanguage.copy("個人朱印", "Personal seal").poemScript(script))
-                            .font(typeface.bodyFont)
-                            .foregroundStyle(Color.ink)
-                        Text(AppLanguage.copy("作為新作品與分享圖的默認署名。", "Your default signature for new poems and share images.").poemScript(script))
-                            .font(typeface.tinySealFont)
-                            .foregroundStyle(Color.mutedInk)
-                        ArtworkSealControls(
-                            sealName: $sealName,
-                            selectedSealStyleRaw: $selectedSealStyleRaw,
-                            transliteration: $transliteration,
-                            sealNameFocused: $sealNameFocused
-                        ) { showsPaywall = true }
-                    }
-
-                    SettingsNavigationRow(title: AppLanguage.copy("關於", "About"), mark: "息") {
-                        showsAbout = true
-                    }
+                    .padding(.top, 20)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
                 }
-                .padding(.top, 62)
-                .padding(.horizontal, 30)
-                .padding(.bottom, 30)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .navigationBarHidden(true)
+            .navigationDestination(item: $legalDocument) { document in
+                LegalDocumentView(document: document)
+            }
+            .navigationDestination(isPresented: $showsContact) {
+                ContactSettingsView()
+            }
         }
         .onAppear { normalizePreferences() }
         .onChange(of: store.isPremium) { _, _ in normalizePreferences() }
+        .onChange(of: sealNameFocused) { _, focused in
+            if !focused { sealName = ShareArtworkStyle.normalizedSealName(sealName) }
+        }
         .onDisappear { sealName = ShareArtworkStyle.normalizedSealName(sealName) }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(.clear)
-        .overlay(alignment: .topTrailing) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Color.ink.opacity(0.35))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(AppLanguage.copy("關閉", "Close"))
-            .padding(.top, 14)
-            .padding(.trailing, 22)
-        }
-        .fullScreenCover(isPresented: $showsAbout) {
-            AboutSettingsView()
-        }
         .sheet(isPresented: $showsPremiumStatus) {
             PremiumStatusView()
+        }
+        .sheet(isPresented: $showsDeveloperLetter) {
+            DeveloperLetterView()
+        }
+        .sheet(isPresented: $showsWidgetGuide) {
+            WidgetGuideView()
+        }
+        .sheet(isPresented: $showsMusicCredits) {
+            PoemMusicCreditsSheet()
         }
         .sheet(isPresented: $showsPaywall) {
             PaywallView {
                 showsPaywall = false
             }
         }
+    }
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(AppLanguage.copy("關於诗客", "About Ink & Verse").poemScript(script))
+                .font(typeface.bodyFont)
+                .foregroundStyle(Color.ink)
+                .padding(.bottom, 4)
+
+            ProfileRow(title: AppLanguage.copy("桌面小組件", "Home Screen widget"), mark: "件") {
+                showsWidgetGuide = true
+            }
+
+            ProfileRow(title: AppLanguage.copy("開發者的一封信", "A letter from the developer"), mark: "箋") {
+                showsDeveloperLetter = true
+            }
+
+            ShareLink(item: AppLanguage.copy("我在用诗客，以今日心绪生成一首古诗。", "I'm using Ink & Verse to create classical Chinese poetry.")) {
+                ProfileRowLabel(title: AppLanguage.copy("分享給好友", "Share with friends"), mark: "享")
+            }
+            .buttonStyle(.plain)
+
+            ProfileRow(title: AppLanguage.copy("聯繫我們", "Contact us"), mark: "信") {
+                showsContact = true
+            }
+
+            ProfileRow(title: AppLanguage.copy("用戶協議", "Terms of use"), mark: "約") {
+                legalDocument = .terms
+            }
+
+            ProfileRow(title: AppLanguage.copy("隱私政策", "Privacy policy"), mark: "隱") {
+                legalDocument = .privacy
+            }
+
+            ProfileRow(title: AppLanguage.copy("音樂致謝", "Music credits"), mark: "樂") {
+                showsMusicCredits = true
+            }
+        }
+    }
+
+    private var appVersionText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(AppLanguage.copy("版本", "Version").poemScript(script)) \(version) (\(build))"
     }
 
     private func normalizePreferences() {
@@ -812,139 +940,28 @@ struct FontSettingsView: View {
             selectedSealStyleRaw = SealStampStyle.zhuwen.rawValue
         }
     }
-
 }
 
-private struct SettingsNavigationRow: View {
-    @Environment(\.poemTypeface) private var typeface
-    @Environment(\.poemScript) private var script
+private struct ProfileRow: View {
     let title: String
-    var mark: String = "入"
+    let mark: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Text(mark.poemScript(script))
-                    .font(typeface.tinySealFont)
-                    .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(Color.cinnabar))
-
-                Text(title.poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(Color.ink)
-
-                Spacer()
-
-                Text("›")
-                    .font(.system(size: 24, weight: .light))
-                    .foregroundStyle(Color.cinnabar.opacity(0.78))
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 48)
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.55))
-                    .stroke(Color.mutedInk.opacity(0.18), lineWidth: 0.8)
-            }
+            ProfileRowLabel(title: title, mark: mark)
         }
         .buttonStyle(.plain)
     }
 }
 
-private struct AboutSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
+private struct ProfileRowLabel: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
-    @State private var legalDocument: LegalDocument?
-    @State private var showsContact = false
+    let title: String
+    let mark: String
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                PaperBackground()
-
-                VStack(spacing: 0) {
-                    HStack(alignment: .top) {
-                        Text(AppLanguage.copy("關於", "About").poemScript(script))
-                            .font(typeface.titleFont)
-                            .foregroundStyle(Color.ink)
-                        Spacer()
-                        QuietBackButton(title: "返回") { dismiss() }
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.top, 56)
-                    .padding(.bottom, 28)
-
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 22) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(AppLanguage.copy("织诗", "Woven Verse").poemScript(script))
-                                    .font(typeface.titleFont)
-                                    .foregroundStyle(Color.ink)
-                                Text(AppLanguage.copy("以今日心緒，生成一首可收藏的古詩。", "Create a classical Chinese poem from what is on your mind today.").poemScript(script))
-                                    .font(typeface.smallFont)
-                                    .foregroundStyle(Color.mutedInk)
-                            }
-                            .padding(.bottom, 4)
-
-                            aboutStaticRow(title: AppLanguage.copy("版本", "Version"), value: appVersionText, mark: "版")
-
-                            aboutRow(title: AppLanguage.copy("用戶協議", "Terms of use"), mark: "約") {
-                                legalDocument = .terms
-                            }
-
-                            aboutRow(title: AppLanguage.copy("隱私政策", "Privacy policy"), mark: "隱") {
-                                legalDocument = .privacy
-                            }
-
-                            aboutRow(title: AppLanguage.copy("聯繫我們", "Contact us"), mark: "信") {
-                                showsContact = true
-                            }
-
-                            aboutRow(title: AppLanguage.copy("評價", "Rate the app"), mark: "評") {
-                                AppReviewPrompt.request()
-                            }
-
-                            ShareLink(item: AppLanguage.copy("我在用织诗，以今日心绪生成一首古诗。", "I'm using Woven Verse to create classical Chinese poetry.")) {
-                                rowContent(title: AppLanguage.copy("分享給好友", "Share with friends"), value: nil, mark: "享")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 30)
-                        .padding(.bottom, 50)
-                    }
-                }
-            }
-            .navigationBarHidden(true)
-            .navigationDestination(item: $legalDocument) { document in
-                LegalDocumentView(document: document)
-            }
-            .navigationDestination(isPresented: $showsContact) {
-                ContactSettingsView()
-            }
-        }
-    }
-
-    private var appVersionText: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "\(version) (\(build))"
-    }
-
-    private func aboutRow(title: String, mark: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            rowContent(title: title, value: nil, mark: mark)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func aboutStaticRow(title: String, value: String, mark: String) -> some View {
-        rowContent(title: title, value: value, mark: mark)
-    }
-
-    private func rowContent(title: String, value: String?, mark: String) -> some View {
         HStack(spacing: 12) {
             Text(mark.poemScript(script))
                 .font(typeface.tinySealFont)
@@ -958,18 +975,13 @@ private struct AboutSettingsView: View {
 
             Spacer()
 
-            if let value {
-                Text(value.poemScript(script))
-                    .font(typeface.tinySealFont)
-                    .foregroundStyle(Color.mutedInk)
-            } else {
-                Text("›")
-                    .font(.system(size: 24, weight: .light))
-                    .foregroundStyle(Color.cinnabar.opacity(0.78))
-            }
+            Text("›")
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(Color.cinnabar.opacity(0.78))
         }
         .padding(.horizontal, 14)
         .frame(height: 48)
+        .contentShape(Rectangle())
         .background {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.white.opacity(0.55))
@@ -983,6 +995,8 @@ private struct ContactSettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
+    @State private var showsMailComposer = false
+    @State private var copiedEmail = false
 
     var body: some View {
         ZStack {
@@ -1003,17 +1017,37 @@ private struct ContactSettingsView: View {
                 .padding(.bottom, 28)
 
                 VStack(alignment: .leading, spacing: 18) {
-                    contactRow(title: AppLanguage.copy("郵箱", "Email"), value: "raowenjieszu@gmail.com", mark: "郵") {
-                        if let url = URL(string: "mailto:raowenjieszu@gmail.com?subject=织诗") {
-                            openURL(url)
+                    contactRow(
+                        title: AppLanguage.copy("寫信反饋", "Email feedback"),
+                        value: copiedEmail ? AppLanguage.copy("已複製郵箱", "Email copied") : FeedbackMail.recipient,
+                        mark: "郵"
+                    ) {
+                        FeedbackMail.compose(showComposer: $showsMailComposer) {
+                            withAnimation { copiedEmail = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                withAnimation { copiedEmail = false }
+                            }
                         }
                     }
 
-                    contactRow(title: AppLanguage.copy("小紅書", "Xiaohongshu"), value: "织诗", mark: "書") {
-                        if let url = URL(string: "https://www.xiaohongshu.com/user/profile/608e5e7500000000010050c2") {
-                            openURL(url)
+                    contactRow(title: AppLanguage.copy("App Store 評價", "Review on the App Store"), value: "", mark: "評") {
+                        AppStoreLinks.openWriteReview()
+                    }
+
+                    // Xiaohongshu is only meaningful to Chinese-speaking readers.
+                    if !AppLanguage.isEnglish {
+                        contactRow(title: "小紅書", value: "织诗", mark: "書") {
+                            if let url = URL(string: "https://www.xiaohongshu.com/user/profile/608e5e7500000000010050c2") {
+                                openURL(url)
+                            }
                         }
                     }
+
+                    Text(AppLanguage.copy("有想法、問題，或想分享你喜歡的詩，都可以來找我。", "Ideas, problems, or a poem you love: I'd be glad to hear from you.").poemScript(script))
+                        .font(typeface.tinySealFont)
+                        .foregroundStyle(Color.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
                 }
                 .padding(.horizontal, 30)
 
@@ -1021,6 +1055,10 @@ private struct ContactSettingsView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showsMailComposer) {
+            FeedbackMailComposer()
+                .ignoresSafeArea()
+        }
     }
 
     private func contactRow(title: String, value: String, mark: String, action: @escaping () -> Void) -> some View {
@@ -1077,9 +1115,9 @@ private enum LegalDocument: String, Identifiable {
             switch self {
             case .terms:
                 return """
-                Welcome to Woven Verse. By downloading, installing, or using the app, you agree to these terms.
+                Welcome to Ink & Verse. By downloading, installing, or using the app, you agree to these terms.
 
-                Woven Verse helps you create classical Chinese poetry. You choose imagery and select AI-generated candidate lines to shape a poem.
+                Ink & Verse helps you create classical Chinese poetry. You choose imagery and select AI-generated candidate lines to shape a poem.
 
                 You own the poems you create in the app and may use, share, or publish them. AI-generated lines may resemble other works, so we do not guarantee that a poem is unique.
 
@@ -1095,7 +1133,7 @@ private enum LegalDocument: String, Identifiable {
                 """
             case .privacy:
                 return """
-                Woven Verse respects your privacy.
+                Ink & Verse respects your privacy.
 
                 With your permission, the app uses only your city name to add a place to a poem's inscription. It does not record precise coordinates or keep location history. You can turn off location access in Settings at any time.
 
@@ -1115,7 +1153,7 @@ private enum LegalDocument: String, Identifiable {
         switch self {
         case .terms:
             return """
-            歡迎使用「織詩」。下載、安裝或使用本應用即表示你同意以下條款。
+            歡迎使用「詩客」。下載、安裝或使用本應用即表示你同意以下條款。
 
             本應用是一款古典中文詩歌創作輔助工具，用戶通過選擇意境，借助 AI 技術生成候選詩句，逐句擇選完成詩歌創作。
 
@@ -1133,7 +1171,7 @@ private enum LegalDocument: String, Identifiable {
             """
         case .privacy:
             return """
-            「織詩」重視你的隱私。
+            「詩客」重視你的隱私。
 
             經你明確授權後，本應用僅獲取你所在城市的名稱，用於在詩歌落款處顯示創作地點。我們不會記錄你的精確地理坐標，也不會存儲你的位置歷史。你可以隨時在系統設置中關閉位置權限。
 
@@ -1269,6 +1307,14 @@ struct ShareArtworkStyle: Hashable {
     let shadow: ShadowStyle
 }
 
+/// The English reading printed beneath (or beside) the Chinese artwork on an
+/// English share image. The artwork itself — verse, colophon, seal — stays Chinese.
+struct ShareTranslation: Hashable {
+    let title: String
+    let byline: String
+    let text: String
+}
+
 extension ShareArtworkStyle {
     static var defaultPreferences: ShareArtworkStyle {
         let defaults = UserDefaults.standard
@@ -1282,21 +1328,16 @@ extension ShareArtworkStyle {
             sealName: defaults.string(forKey: SealStampView.storageKey) ?? "",
             sealStyle: SealStampStyle(rawValue: defaults.string(forKey: SealStampStyle.storageKey) ?? "") ?? .zhuwen,
             transliteration: defaults.string(forKey: NameTransliterator.overrideStorageKey) ?? "",
-            shadow: ShadowStyle(rawValue: defaults.string(forKey: ShadowStyle.storageKey) ?? "") ?? .morning
+            shadow: ShadowStyle(rawValue: defaults.string(forKey: ShadowStyle.storageKey) ?? "") ?? .defaultStyle
         )
     }
 
-    /// Only explicit "Set as default" actions promote a draft to app preferences.
-    func persistDefaultPreferences() {
-        let defaults = UserDefaults.standard
-        defaults.set(background.rawValue, forKey: PoemBackground.storageKey)
-        defaults.set(typeface.rawValue, forKey: PoemTypeface.storageKey)
-        defaults.set(script.rawValue, forKey: PoemScript.storageKey)
-        defaults.set(usesVerticalText, forKey: PoemTextLayout.storageKey)
-        defaults.set(sealName, forKey: SealStampView.storageKey)
-        defaults.set(sealStyle.rawValue, forKey: SealStampStyle.storageKey)
-        defaults.set(transliteration, forKey: NameTransliterator.overrideStorageKey)
-        defaults.set(shadow.rawValue, forKey: ShadowStyle.storageKey)
+    func replacingBackground(_ background: PoemBackground) -> ShareArtworkStyle {
+        ShareArtworkStyle(
+            background: background, typeface: typeface, script: script,
+            usesVerticalText: usesVerticalText, sealName: sealName, sealStyle: sealStyle,
+            transliteration: transliteration, shadow: shadow
+        )
     }
 
     static func normalizedSealName(_ name: String) -> String {
@@ -1318,7 +1359,7 @@ extension SavedPoem {
             sealName: sealName ?? defaults.string(forKey: SealStampView.storageKey) ?? "",
             sealStyle: SealStampStyle(rawValue: sealStyleRawValue ?? defaults.string(forKey: SealStampStyle.storageKey) ?? "") ?? .zhuwen,
             transliteration: sealTransliteration ?? defaults.string(forKey: NameTransliterator.overrideStorageKey) ?? "",
-            shadow: ShadowStyle(rawValue: shadowRawValue ?? defaults.string(forKey: ShadowStyle.storageKey) ?? "") ?? .morning
+            shadow: ShadowStyle(rawValue: shadowRawValue ?? defaults.string(forKey: ShadowStyle.storageKey) ?? "") ?? .defaultStyle
         )
     }
 
@@ -1357,7 +1398,7 @@ struct PoemArchiveCard<Artwork: View>: View {
             Text(title)
                 .font(typeface.smallFont)
                 .foregroundStyle(Color.ink)
-                .lineLimit(titleLineLimit, reservesSpace: titleLineLimit > 1)
+                .lineLimit(titleLineLimit)
 
             Text(subtitle)
                 .font(.system(size: 10))
@@ -1377,6 +1418,9 @@ struct ConfiguredShareArtwork: View {
     let lunarDateText: String
     let dayPeriodText: String
     let style: ShareArtworkStyle
+    var translation: ShareTranslation? = nil
+    var extraTopPadding: CGFloat = 0
+    var extraBottomPadding: CGFloat = 0
 
     var body: some View {
         SharePoemArtwork(
@@ -1394,7 +1438,10 @@ struct ConfiguredShareArtwork: View {
             usesVerticalTextOverride: style.usesVerticalText,
             sealStyleOverride: style.sealStyle,
             sealTransliterationOverride: style.transliteration,
-            shadowStyleOverride: style.shadow
+            shadowStyleOverride: style.shadow,
+            translation: translation,
+            extraTopPadding: extraTopPadding,
+            extraBottomPadding: extraBottomPadding
         )
         .environment(\.poemTypeface, style.typeface)
         .environment(\.poemScript, style.script)
@@ -1419,14 +1466,20 @@ struct PoemSharePreviewView: View {
     let locationMark: String?
     let lunarDateText: String
     let dayPeriodText: String
+    var translation: ShareTranslation? = nil
     var savedStyle: ShareArtworkStyle? = nil
+    /// Opens on this paper instead of the default, e.g. a classic's own paper,
+    /// so the share page matches the card it was opened from.
+    var initialBackground: PoemBackground? = nil
     var availableLayouts: [ShareArtworkLayout] = ShareArtworkLayout.allCases
 
     var body: some View {
         PoemArtworkWorkspace(
             imageTitle: imageTitle, lines: lines, locationMark: locationMark,
             lunarDateText: lunarDateText, dayPeriodText: dayPeriodText,
+            translation: translation,
             initialStyle: savedStyle,
+            initialBackground: initialBackground,
             availableLayouts: availableLayouts
         )
     }
@@ -1441,7 +1494,6 @@ struct PoemArtworkEditorView: View {
             imageTitle: poem.imageTitle, lines: poem.lines, locationMark: poem.locationText,
             lunarDateText: poem.lunarDateText, dayPeriodText: poem.dayPeriodText,
             initialStyle: poem.artworkStyle,
-            availableLayouts: [.portrait],
             onSave: { onSave(poem.applyingArtworkStyle($0)) }
         )
     }
@@ -1462,18 +1514,18 @@ private struct PoemArtworkWorkspace: View {
     @State private var selectedSealStyleRaw: String
     @State private var transliteration: String
     @State private var selectedShadowRaw: String
-    @AppStorage(PoemBackground.storageKey) private var defaultBackgroundRaw = PoemBackground.defaultBackground.rawValue
-    @AppStorage(PoemTypeface.storageKey) private var defaultTypefaceRaw = PoemTypeface.kaiti.rawValue
-    @AppStorage(PoemScript.storageKey) private var defaultScriptRaw = PoemScript.simplified.rawValue
-    @AppStorage(PoemTextLayout.storageKey) private var defaultUsesVerticalText = true
-    @AppStorage(SealStampView.storageKey) private var defaultSealName = ""
-    @AppStorage(SealStampStyle.storageKey) private var defaultSealStyleRaw = SealStampStyle.zhuwen.rawValue
-    @AppStorage(NameTransliterator.overrideStorageKey) private var defaultTransliteration = ""
-    @AppStorage(ShadowStyle.storageKey) private var defaultShadowRaw = ShadowStyle.defaultStyle.rawValue
     @State private var section = ShareConfigurationSection.paper
     @State private var preparedShareItems: [ShareArtworkLayout: PreparedShareItem] = [:]
     @State private var previewLayout: ShareArtworkLayout?
+    @State private var pagedLayout: ShareArtworkLayout = .portrait
     @State private var showsPaywall = false
+    @State private var showsPaperChoice = false
+    /// Set from the paper choice sheet; acted on once that sheet is gone.
+    @State private var opensPaywallAfterChoice = false
+    @State private var sharesWhenReady = false
+    /// A free paper chosen at share time for an archived work, whose saved
+    /// style otherwise can't change here.
+    @State private var sharePaperOverride: PoemBackground?
     @FocusState private var sealNameFocused: Bool
 
     let imageTitle: String
@@ -1481,6 +1533,7 @@ private struct PoemArtworkWorkspace: View {
     let locationMark: String?
     let lunarDateText: String
     let dayPeriodText: String
+    let translation: ShareTranslation?
 
     let initialStyle: ShareArtworkStyle?
     let availableLayouts: [ShareArtworkLayout]
@@ -1489,7 +1542,9 @@ private struct PoemArtworkWorkspace: View {
     init(
         imageTitle: String, lines: [String], locationMark: String?,
         lunarDateText: String, dayPeriodText: String,
+        translation: ShareTranslation? = nil,
         initialStyle: ShareArtworkStyle? = nil,
+        initialBackground: PoemBackground? = nil,
         availableLayouts: [ShareArtworkLayout] = ShareArtworkLayout.allCases,
         onSave: ((ShareArtworkStyle) -> Void)? = nil
     ) {
@@ -1498,11 +1553,12 @@ private struct PoemArtworkWorkspace: View {
         self.locationMark = locationMark
         self.lunarDateText = lunarDateText
         self.dayPeriodText = dayPeriodText
+        self.translation = translation
         self.initialStyle = initialStyle
         self.availableLayouts = availableLayouts
         self.onSave = onSave
         let draft = initialStyle ?? ShareArtworkStyle.defaultPreferences
-        _selectedBgRaw = State(initialValue: draft.background.rawValue)
+        _selectedBgRaw = State(initialValue: (initialBackground ?? draft.background).rawValue)
         _selectedTypefaceRaw = State(initialValue: draft.typeface.rawValue)
         _selectedScriptRaw = State(initialValue: draft.script.rawValue)
         _usesVerticalText = State(initialValue: draft.usesVerticalText)
@@ -1512,36 +1568,34 @@ private struct PoemArtworkWorkspace: View {
         _selectedShadowRaw = State(initialValue: draft.shadow.rawValue)
     }
 
-    private var matchesDefaultPreferences: Bool {
-        style == ShareArtworkStyle(
-            background: PoemBackground(rawValue: defaultBackgroundRaw) ?? .defaultBackground,
-            typeface: PoemTypeface(rawValue: defaultTypefaceRaw) ?? .kaiti,
-            script: PoemScript(rawValue: defaultScriptRaw) ?? .simplified,
-            usesVerticalText: defaultUsesVerticalText,
-            sealName: ShareArtworkStyle.normalizedSealName(defaultSealName),
-            sealStyle: SealStampStyle(rawValue: defaultSealStyleRaw) ?? .zhuwen,
-            transliteration: defaultTransliteration,
-            shadow: ShadowStyle(rawValue: defaultShadowRaw) ?? .morning
-        )
-    }
-
     private var showsConfiguration: Bool { onSave != nil || initialStyle == nil }
+
+    /// A share draft may preview a premium paper (for instance a classic's own
+    /// paper); the paywall appears only when the reader actually shares it.
+    private var requiresPremiumToShare: Bool {
+        onSave == nil && style.background.isPremium && !store.isPremium
+    }
 
     private var style: ShareArtworkStyle {
         // Sharing an archived work preserves its saved appearance.
-        if onSave == nil, let initialStyle { return initialStyle }
+        if onSave == nil, let initialStyle {
+            guard let sharePaperOverride else { return initialStyle }
+            return initialStyle.replacingBackground(sharePaperOverride)
+        }
         let background = PoemBackground(rawValue: selectedBgRaw) ?? .defaultBackground
         let font = PoemTypeface(rawValue: selectedTypefaceRaw) ?? .kaiti
         let seal = SealStampStyle(rawValue: selectedSealStyleRaw) ?? .zhuwen
+        // Only the editor clamps a locked paper; sharing gates it at the share button.
+        let clampsBackground = onSave != nil && background.isPremium && !store.isPremium
         return ShareArtworkStyle(
-            background: background.isPremium && !store.isPremium ? .defaultBackground : background,
+            background: clampsBackground ? .defaultBackground : background,
             typeface: !font.isFree && !store.isPremium ? .kaiti : font,
             script: PoemScript(rawValue: selectedScriptRaw) ?? .simplified,
             usesVerticalText: usesVerticalText,
             sealName: ShareArtworkStyle.normalizedSealName(sealName),
             sealStyle: !seal.isFree && !store.isPremium ? .zhuwen : seal,
             transliteration: transliteration,
-            shadow: ShadowStyle(rawValue: selectedShadowRaw) ?? .morning
+            shadow: ShadowStyle(rawValue: selectedShadowRaw) ?? .defaultStyle
         )
     }
 
@@ -1550,49 +1604,22 @@ private struct PoemArtworkWorkspace: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
-                    Text(AppLanguage.copy(onSave == nil ? "分享" : "編輯作品", onSave == nil ? "Share" : "Edit poem").poemScript(script))
-                        .font(typeface.titleFont)
-                        .foregroundStyle(Color.ink)
-                    Spacer()
-                    if let onSave {
-                        QuietBackButton(title: AppLanguage.copy("保存", "Save")) {
-                            onSave(style)
-                            dismiss()
-                        }
+                    if onSave != nil {
+                        // Edits save as they happen, so the corner offers sharing instead.
+                        QuietBackButton(title: AppLanguage.copy("返回", "Back")) { dismiss() }
+                        Spacer()
+                        shareButton
+                    } else {
+                        QuietBackButton(title: "返回") { dismiss() }
+                        Spacer()
+                        shareButton
                     }
-                    QuietBackButton(title: onSave == nil ? "返回" : AppLanguage.copy("取消", "Cancel")) { dismiss() }
                 }
                 .padding(.horizontal, 30)
                 .padding(.top, 16)
                 .padding(.bottom, 18)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        ForEach(availableLayouts) { layout in
-                            let item = preparedShareItems[layout]
-                            let readyItem = item?.style == style ? item : nil
-                            SharePreviewCard(
-                                layout: layout,
-                                imageTitle: imageTitle,
-                                lines: lines,
-                                locationMark: locationMark,
-                                lunarDateText: lunarDateText,
-                                dayPeriodText: dayPeriodText,
-                                style: style,
-                                shareItem: readyItem,
-                                showsShareAction: onSave == nil,
-                                isSpotlightTarget: spotlightGuide.step == .tapShareButton && layout == .portrait && readyItem != nil,
-                                onTapPreview: {
-                                    sealNameFocused = false
-                                    previewLayout = layout
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 24)
-                }
-                .scrollDismissesKeyboard(.interactively)
+                layoutPager
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if showsConfiguration { configurationPanel }
@@ -1607,20 +1634,23 @@ private struct PoemArtworkWorkspace: View {
                     lunarDateText: lunarDateText,
                     dayPeriodText: dayPeriodText,
                     style: style,
+                    translation: translation,
                     onDismiss: { previewLayout = nil }
                 )
                 .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.25), value: previewLayout != nil)
+        .onChange(of: style) { _, newStyle in
+            onSave?(newStyle)
+        }
         .task(id: style) {
-            guard onSave == nil else { return }
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             await renderShareImages(style: style)
         }
         .onAppear {
-            // Normalize the draft without changing this archived work until Save.
+            // Normalize the draft without changing this archived work until the reader edits it.
             let initial = style
             selectedBgRaw = initial.background.rawValue
             selectedTypefaceRaw = initial.typeface.rawValue
@@ -1645,37 +1675,203 @@ private struct PoemArtworkWorkspace: View {
         .sheet(isPresented: $showsPaywall) {
             PaywallView { showsPaywall = false }
         }
+        .sheet(isPresented: $showsPaperChoice, onDismiss: {
+            if opensPaywallAfterChoice {
+                opensPaywallAfterChoice = false
+                showsPaywall = true
+            } else {
+                presentPendingShareIfReady()
+            }
+        }) {
+            SharePaperChoiceSheet(
+                paper: style.background,
+                freePaper: freeSharePaper,
+                onUnlock: {
+                    opensPaywallAfterChoice = true
+                    showsPaperChoice = false
+                },
+                onShareWithFreePaper: {
+                    switchToFreePaper()
+                    sharesWhenReady = true
+                    showsPaperChoice = false
+                }
+            )
+        }
+        .onChange(of: readyShareItem?.url) { _, _ in presentPendingShareIfReady() }
         .spotlightOverlay(for: [.selectBackground, .tapShareButton, .returnFromShare])
+    }
+
+    /// Portrait and landscape sit side by side in a fixed pager sized to the
+    /// space above the configuration panel, so the page itself never scrolls.
+    private var layoutPager: some View {
+        VStack(spacing: 12) {
+            GeometryReader { geometry in
+                TabView(selection: $pagedLayout) {
+                    ForEach(availableLayouts) { layout in
+                        SharePreviewCard(
+                            layout: layout,
+                            imageTitle: imageTitle,
+                            lines: lines,
+                            locationMark: locationMark,
+                            lunarDateText: lunarDateText,
+                            dayPeriodText: dayPeriodText,
+                            style: style,
+                            translation: translation,
+                            maxSize: CGSize(
+                                width: geometry.size.width - 88,
+                                height: geometry.size.height - 16
+                            ),
+                            onTapPreview: {
+                                sealNameFocused = false
+                                previewLayout = layout
+                            }
+                        )
+                        // Top-leading: vertical verse starts at the right edge.
+                        .overlay(alignment: .topLeading) {
+                            if requiresPremiumToShare {
+                                MemberPaperTag().padding(8)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .tag(layout)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .overlay { pagerArrows }
+            }
+
+            if availableLayouts.count > 1 {
+                layoutIndicator
+                    .frame(minHeight: 34)
+                    .padding(.horizontal, 30)
+            }
+        }
+        .padding(.bottom, 14)
+        .onAppear {
+            if !availableLayouts.contains(pagedLayout), let first = availableLayouts.first {
+                pagedLayout = first
+            }
+        }
+    }
+
+    /// The rendered image for the current layout, once it matches the style.
+    private var readyShareItem: PreparedShareItem? {
+        let item = preparedShareItems[pagedLayout]
+        return item?.style == style ? item : nil
+    }
+
+    private var shareButton: some View {
+        let readyItem = readyShareItem
+        return ShareArtworkButton(
+            shareItem: readyItem,
+            isSpotlightTarget: spotlightGuide.step == .tapShareButton && pagedLayout == .portrait && readyItem != nil,
+            requiresPremium: requiresPremiumToShare,
+            requestPremium: {
+                sealNameFocused = false
+                showsPaperChoice = true
+            }
+        )
+        .padding(.top, 4)
+    }
+
+    private var freeSharePaper: PoemBackground {
+        PoemBackground.freeImageBackgrounds.first ?? .defaultBackground
+    }
+
+    private func switchToFreePaper() {
+        let paper = freeSharePaper
+        if initialStyle != nil && onSave == nil {
+            sharePaperOverride = paper
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) {
+                selectedBgRaw = paper.rawValue
+            }
+        }
+    }
+
+    /// Opens the share sheet for a free-paper share once the paper choice
+    /// sheet has closed and the new image has finished rendering.
+    private func presentPendingShareIfReady() {
+        guard sharesWhenReady, !showsPaperChoice, !requiresPremiumToShare,
+              let item = readyShareItem else { return }
+        sharesWhenReady = false
+        SharePresenter.present(controller: item.controller)
+    }
+
+    private var pagedIndex: Int {
+        availableLayouts.firstIndex(of: pagedLayout) ?? 0
+    }
+
+    private func pageTo(offset: Int) {
+        let target = pagedIndex + offset
+        guard availableLayouts.indices.contains(target) else { return }
+        sealNameFocused = false
+        SensoryFeedback.lightTap()
+        withAnimation(.easeInOut(duration: 0.3)) {
+            pagedLayout = availableLayouts[target]
+        }
+    }
+
+    /// Chevrons at the pager's edges hint that the other layout is a swipe away.
+    private var pagerArrows: some View {
+        HStack {
+            pagerArrow(systemName: "chevron.left", isVisible: pagedIndex > 0) { pageTo(offset: -1) }
+                .accessibilityLabel(AppLanguage.copy("上一版式", "Previous layout").poemScript(script))
+            Spacer()
+            pagerArrow(systemName: "chevron.right", isVisible: pagedIndex < availableLayouts.count - 1) { pageTo(offset: 1) }
+                .accessibilityLabel(AppLanguage.copy("下一版式", "Next layout").poemScript(script))
+        }
+        .padding(.horizontal, 8)
+        .animation(.easeOut(duration: 0.2), value: pagedLayout)
+    }
+
+    private func pagerArrow(systemName: String, isVisible: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.cinnabar)
+                .frame(width: 28, height: 28)
+                .background {
+                    Circle()
+                        .fill(Color.white.opacity(0.92))
+                        .stroke(Color.cinnabar.opacity(0.35), lineWidth: 0.8)
+                }
+                .shadow(color: Color.black.opacity(0.10), radius: 3, x: 0, y: 1)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+    }
+
+    private var layoutIndicator: some View {
+        HStack(spacing: 14) {
+            ForEach(availableLayouts) { layout in
+                let isCurrent = layout == pagedLayout
+                Button {
+                    guard !isCurrent else { return }
+                    pageTo(offset: (availableLayouts.firstIndex(of: layout) ?? 0) - pagedIndex)
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(isCurrent ? Color.cinnabar : Color.mutedInk.opacity(0.3))
+                            .frame(width: 5, height: 5)
+                        Text(layout.label.poemScript(script))
+                            .font(typeface.tinySealFont)
+                            .foregroundStyle(isCurrent ? Color.ink : Color.mutedInk)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isCurrent ? .isSelected : [])
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: pagedLayout)
     }
 
     private var configurationPanel: some View {
         VStack(spacing: 16) {
-            if onSave == nil {
-                HStack(spacing: 12) {
-                    Text(AppLanguage.copy(
-                        matchesDefaultPreferences ? "沿用全局設置" : "僅調整本次分享圖",
-                        matchesDefaultPreferences ? "Using app defaults" : "Changes apply to this share image"
-                    ).poemScript(script))
-                        .font(typeface.tinySealFont)
-                        .foregroundStyle(Color.mutedInk)
-                    Spacer(minLength: 0)
-                    Button {
-                        sealNameFocused = false
-                        sealName = style.sealName
-                        style.persistDefaultPreferences()
-                        SensoryFeedback.lightTap()
-                    } label: {
-                        Text(AppLanguage.copy(matchesDefaultPreferences ? "已是默認" : "設為默認", matchesDefaultPreferences ? "Default" : "Set as default").poemScript(script))
-                            .font(typeface.smallFont)
-                            .foregroundStyle(matchesDefaultPreferences ? Color.mutedInk : Color.cinnabar)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(matchesDefaultPreferences)
-                    .accessibilityHint(AppLanguage.copy("同步到日常閱讀與新分享圖", "Apply to the app and future share images"))
-                }
-                .padding(.horizontal, 30)
-            }
-
             Picker(AppLanguage.copy("作品配置", "Artwork options"), selection: $section) {
                 ForEach(ShareConfigurationSection.allCases) { item in
                     Text(item.label.poemScript(script)).tag(item)
@@ -1727,7 +1923,8 @@ private struct PoemArtworkWorkspace: View {
             let renderer = ImageRenderer(content: ConfiguredShareArtwork(
                 layout: layout, imageTitle: imageTitle, lines: lines,
                 locationMark: locationMark, lunarDateText: lunarDateText,
-                dayPeriodText: dayPeriodText, style: snapshot
+                dayPeriodText: dayPeriodText, style: snapshot,
+                translation: translation
             ).frame(width: size.width, height: size.height))
             renderer.scale = 1
             guard let image = renderer.uiImage else { continue }
@@ -1798,11 +1995,23 @@ private struct ArtworkTextControls: View {
                         selectedTypefaceRaw = font.rawValue
                     } label: {
                         HStack(spacing: 4) {
-                            Text(font.displayName.poemScript(script))
-                                .font(font.previewFont(size: 14))
-                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 3) {
+                                Text(font.displayName.poemScript(script))
+                                    .font(font.previewFont(size: 14))
+                                if AppLanguage.isEnglish {
+                                    Text(font.englishStyleName)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(selectedTypeface == font ? Color.cinnabar.opacity(0.8) : Color.mutedInk)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                             if !font.isFree { PremiumCrownBadge() }
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(AppLanguage.isEnglish ? font.englishStyleName : font.displayName.poemScript(script))
+                        .accessibilityValue(font.isFree ? "" : AppLanguage.copy("會員", "Premium"))
                         .foregroundStyle(selectedTypeface == font ? Color.cinnabar : Color.ink)
                         .padding(10)
                         .background {
@@ -1943,16 +2152,6 @@ private struct ArtworkPaperControls: View {
             ZStack(alignment: .trailing) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
-                        plainPaperButton
-
-                        ForEach(ShadowStyle.visibleCases) { style in
-                            shadowStyleButton(style)
-                        }
-
-                        Rectangle()
-                            .fill(Color.mutedInk.opacity(0.2))
-                            .frame(width: 0.5, height: 60)
-
 	                    // Background images
 	                    ForEach(PoemBackground.imageBackgrounds) { bg in
 	                        let isSpotlightTarget = participatesInGuide && spotlightGuide.step == .selectBackground && bg == PoemBackground.freeImageBackgrounds.first
@@ -2001,6 +2200,16 @@ private struct ArtworkPaperControls: View {
 	                        .buttonStyle(.plain)
 	                        .accessibilityAddTraits(isActive ? .isSelected : [])
 	                    }
+
+                        Rectangle()
+                            .fill(Color.mutedInk.opacity(0.2))
+                            .frame(width: 0.5, height: 60)
+
+                        plainPaperButton
+
+                        ForEach(ShadowStyle.visibleCases) { style in
+                            shadowStyleButton(style)
+                        }
                     }
                     .padding(.horizontal, horizontalPadding)
                     .padding(.vertical, 2)
@@ -2128,6 +2337,100 @@ private struct ArtworkPaperControls: View {
     }
 }
 
+/// Marks a share preview whose paper needs membership, so the lock reads as
+/// belonging to the paper rather than to sharing itself.
+private struct MemberPaperTag: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "crown.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color.premiumGold)
+            Text(AppLanguage.copy("會員紙張", "Member paper").poemScript(script))
+                .font(typeface.tinySealFont)
+                .foregroundStyle(Color.ink)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background {
+            Capsule()
+                .fill(Color.white.opacity(0.9))
+                .stroke(Color.premiumGold.opacity(0.5), lineWidth: 0.7)
+        }
+        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Shown when a free reader shares on a member paper: unlock every paper, or
+/// share right away on a free one. Sharing itself is never locked.
+private struct SharePaperChoiceSheet: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    let paper: PoemBackground
+    let freePaper: PoemBackground
+    let onUnlock: () -> Void
+    let onShareWithFreePaper: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Text(AppLanguage.copy(
+                    "「\(paper.displayName)」是會員紙張",
+                    "\u{201C}\(paper.displayName)\u{201D} is a member paper"
+                ).poemScript(script))
+                    .font(typeface.titleFont)
+                    .foregroundStyle(Color.ink)
+                    .multilineTextAlignment(.center)
+                Text(AppLanguage.copy(
+                    "成為會員即可用全部紙張分享；也可以換成免費的「\(freePaper.displayName)」，現在就分享。",
+                    "Members can share on every paper. Or switch to the free \u{201C}\(freePaper.displayName)\u{201D} paper and share now."
+                ).poemScript(script))
+                    .font(typeface.smallFont)
+                    .foregroundStyle(Color.mutedInk)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 10) {
+                Button(action: onUnlock) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(AppLanguage.copy("解鎖全部紙張", "Unlock all papers").poemScript(script))
+                            .font(typeface.smallFont)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Capsule().fill(Color.cinnabar))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onShareWithFreePaper) {
+                    Text(AppLanguage.copy(
+                        "用「\(freePaper.displayName)」分享",
+                        "Share with \u{201C}\(freePaper.displayName)\u{201D}"
+                    ).poemScript(script))
+                        .font(typeface.smallFont)
+                        .foregroundStyle(Color.ink)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Capsule().stroke(Color.mutedInk.opacity(0.35), lineWidth: 0.8))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 30)
+        .padding(.top, 28)
+        .padding(.bottom, 16)
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 struct PremiumCrownBadge: View {
     var body: some View {
         Image(systemName: "crown.fill")
@@ -2185,9 +2488,7 @@ private struct SelectionIndicator: View {
 }
 
 private struct SharePreviewCard: View {
-    @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
-    @Environment(\.spotlightGuide) private var spotlightGuide
     let layout: ShareArtworkLayout
     let imageTitle: String
     let lines: [String]
@@ -2195,99 +2496,95 @@ private struct SharePreviewCard: View {
     let lunarDateText: String
     let dayPeriodText: String
     let style: ShareArtworkStyle
-    var shareItem: PreparedShareItem?
-    var showsShareAction = true
-    var isSpotlightTarget: Bool = false
+    var translation: ShareTranslation? = nil
+    /// Size the artwork may occupy; it fits inside while keeping its ratio.
+    let maxSize: CGSize
     var onTapPreview: (() -> Void)?
 
     var body: some View {
         let canvasSize = layout.canvasSize
-        let maxPreviewWidth: CGFloat = layout == .landscape ? 310 : 260
+        let width = max(min(maxSize.width, maxSize.height * layout.aspectRatio), 1)
+        let scale = width / canvasSize.width
 
-        VStack(alignment: .leading, spacing: 14) {
+        Button {
+            onTapPreview?()
+        } label: {
+            ConfiguredShareArtwork(
+                layout: layout,
+                imageTitle: imageTitle,
+                lines: lines,
+                locationMark: locationMark,
+                lunarDateText: lunarDateText,
+                dayPeriodText: dayPeriodText,
+                style: style,
+                translation: translation
+            )
+            .frame(width: canvasSize.width, height: canvasSize.height)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: width, height: width / layout.aspectRatio, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(AppLanguage.copy("放大預覽", "Enlarge preview").poemScript(script))
+    }
+}
+
+/// The 享 seal that opens the system share sheet once the JPEG is rendered.
+private struct ShareArtworkButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @Environment(\.spotlightGuide) private var spotlightGuide
+    let shareItem: PreparedShareItem?
+    var isSpotlightTarget = false
+    var requiresPremium = false
+    var requestPremium: () -> Void = {}
+
+    var body: some View {
+        if let shareItem {
             Button {
-                onTapPreview?()
-            } label: {
-                GeometryReader { geometry in
-                    ConfiguredShareArtwork(
-                        layout: layout,
-                        imageTitle: imageTitle,
-                        lines: lines,
-                        locationMark: locationMark,
-                        lunarDateText: lunarDateText,
-                        dayPeriodText: dayPeriodText,
-                        style: style
-                    )
-                    .frame(width: canvasSize.width, height: canvasSize.height)
-                    .scaleEffect(geometry.size.width / canvasSize.width, anchor: .topLeading)
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                guard !requiresPremium else {
+                    requestPremium()
+                    return
                 }
-                .aspectRatio(layout.aspectRatio, contentMode: .fit)
-                .frame(maxWidth: maxPreviewWidth)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .shadow(color: Color.black.opacity(0.10), radius: 6, x: 0, y: 3)
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(AppLanguage.copy("放大預覽", "Enlarge preview").poemScript(script))
-
-            HStack {
-                Text(layout.label.poemScript(script))
-                    .font(typeface.bodyFont)
-                    .foregroundStyle(Color.ink)
-
-                Spacer()
-
-                if showsShareAction {
-                    if let shareItem {
-                        Button {
-                            if isSpotlightTarget {
-                                spotlightGuide.advance()
-                            }
-                            SharePresenter.present(controller: shareItem.controller)
-                        } label: {
-                            Group {
-                                if AppLanguage.isEnglish {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 13, weight: .semibold))
-                                } else {
-                                    Text("享".poemScript(script))
-                                        .font(typeface.sealFont)
-                                }
-                            }
-                                .foregroundStyle(.white)
-                                .frame(width: 34, height: 34)
-                                .background(Circle().fill(Color.cinnabar))
-                                .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                            .spotlightTarget(.tapShareButton, active: isSpotlightTarget)
+                if isSpotlightTarget {
+                    spotlightGuide.advance()
+                }
+                SharePresenter.present(controller: shareItem.controller)
+            } label: {
+                Group {
+                    if AppLanguage.isEnglish {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 13, weight: .semibold))
                     } else {
-                        Group {
-                            if AppLanguage.isEnglish {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(.white)
-                            } else {
-                                Text("備".poemScript(script))
-                                    .font(typeface.sealFont)
-                            }
-                        }
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Circle().fill(Color.mutedInk.opacity(0.35)))
+                        Text("享".poemScript(script))
+                            .font(typeface.sealFont)
                     }
                 }
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.cinnabar))
+                .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .spotlightTarget(.tapShareButton, active: isSpotlightTarget)
+            .accessibilityLabel(AppLanguage.copy("分享", "Share"))
+        } else {
+            Group {
+                if AppLanguage.isEnglish {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Text("備".poemScript(script))
+                        .font(typeface.sealFont)
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(width: 34, height: 34)
+            .background(Circle().fill(Color.mutedInk.opacity(0.35)))
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 16)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.94))
-        }
-	    }
+    }
 }
 
 private enum SharePresenter {
@@ -2358,6 +2655,7 @@ private struct ShareFullscreenPreview: View {
     let lunarDateText: String
     let dayPeriodText: String
     let style: ShareArtworkStyle
+    var translation: ShareTranslation? = nil
     let onDismiss: () -> Void
 
     var body: some View {
@@ -2380,7 +2678,8 @@ private struct ShareFullscreenPreview: View {
                         locationMark: locationMark,
                         lunarDateText: lunarDateText,
                         dayPeriodText: dayPeriodText,
-                        style: style
+                        style: style,
+                        translation: translation
                     )
                     .frame(width: canvasSize.width, height: canvasSize.height)
                     .scaleEffect(scale)
@@ -2438,26 +2737,122 @@ enum PoemVerseSplitter {
 }
 
 /// Traditional composition shared by the live poem and its share artwork.
-struct VerticalPoemComposition<Inscription: View, Verses: View, Title: View>: View {
+/// The colophon follows the last column of verse, never starting above the
+/// verse's first character, and the seal is pressed right beneath it.
+struct VerticalPoemComposition<Inscription: View, Seal: View, Verses: View, Title: View>: View {
     var columnSpacing: CGFloat
     var minimumGap: CGFloat
     @ViewBuilder let inscription: () -> Inscription
+    @ViewBuilder let seal: () -> Seal
     @ViewBuilder let verses: () -> Verses
     @ViewBuilder let title: () -> Title
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
+        VerticalPoemLayout(
+            minimumGap: minimumGap,
+            // Roughly one verse character: the colophon sits a character lower.
+            inscriptionIndent: columnSpacing * 1.5,
+            sealGap: columnSpacing * 0.45
+        ) {
             inscription()
-                .frame(maxHeight: .infinity, alignment: .bottomLeading)
-
-            Spacer(minLength: minimumGap)
-
+                .layoutValue(key: VerticalPoemRole.self, value: .inscription)
+            seal()
+                .layoutValue(key: VerticalPoemRole.self, value: .seal)
             HStack(alignment: .top, spacing: columnSpacing) {
                 verses()
                 title()
             }
+            .layoutValue(key: VerticalPoemRole.self, value: .verses)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+extension VerticalPoemComposition where Seal == EmptyView {
+    init(
+        columnSpacing: CGFloat,
+        minimumGap: CGFloat,
+        @ViewBuilder inscription: @escaping () -> Inscription,
+        @ViewBuilder verses: @escaping () -> Verses,
+        @ViewBuilder title: @escaping () -> Title
+    ) {
+        self.init(
+            columnSpacing: columnSpacing,
+            minimumGap: minimumGap,
+            inscription: inscription,
+            seal: { EmptyView() },
+            verses: verses,
+            title: title
+        )
+    }
+}
+
+private enum VerticalPoemRole: LayoutValueKey {
+    enum Role { case inscription, seal, verses }
+    static let defaultValue = Role.verses
+}
+
+/// Verses at the top right; the colophon and seal at the left, centred down a
+/// full sheet (never above the first verse character). Without a fixed
+/// height, as in a scroll view, the colophon ends level with the verse.
+private struct VerticalPoemLayout: Layout {
+    var minimumGap: CGFloat
+    var inscriptionIndent: CGFloat
+    var sealGap: CGFloat
+
+    private struct Frames {
+        var size: CGSize
+        var inscription: CGPoint
+        var seal: CGPoint
+        var verses: CGPoint
+    }
+
+    private func frames(proposal: ProposedViewSize, subviews: Subviews) -> Frames {
+        func size(of role: VerticalPoemRole.Role) -> CGSize {
+            subviews.first { $0[VerticalPoemRole.self] == role }?.sizeThatFits(.unspecified) ?? .zero
+        }
+        let verses = size(of: .verses)
+        let inscription = size(of: .inscription)
+        let seal = size(of: .seal)
+
+        let gap = inscription.height > 0 && seal.height > 0 ? sealGap : 0
+        let groupHeight = inscription.height + gap + seal.height
+        let inscriptionTop: CGFloat
+        if let available = proposal.height, available.isFinite, available > 0 {
+            // On a full sheet the colophon and seal rest at its vertical middle.
+            inscriptionTop = max(inscriptionIndent, (available - groupHeight) / 2)
+        } else {
+            inscriptionTop = inscription.height == 0 ? 0 : max(inscriptionIndent, verses.height - inscription.height)
+        }
+        let sealTop = inscriptionTop + inscription.height + gap
+        let width = proposal.width ?? (max(inscription.width, seal.width) + minimumGap + verses.width)
+        let contentHeight = max(verses.height, inscriptionTop + groupHeight)
+        let height = max(contentHeight, proposal.height.flatMap { $0.isFinite ? $0 : nil } ?? 0)
+        return Frames(
+            size: CGSize(width: width, height: height),
+            inscription: CGPoint(x: 0, y: inscriptionTop),
+            seal: CGPoint(x: 0, y: sealTop),
+            verses: CGPoint(x: width - verses.width, y: 0)
+        )
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        frames(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = frames(proposal: ProposedViewSize(bounds.size), subviews: subviews)
+        for subview in subviews {
+            let origin: CGPoint = switch subview[VerticalPoemRole.self] {
+            case .inscription: frames.inscription
+            case .seal: frames.seal
+            case .verses: frames.verses
+            }
+            subview.place(
+                at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                proposal: .unspecified
+            )
+        }
     }
 }
 
@@ -2481,21 +2876,14 @@ struct SharePoemArtwork: View {
     var sealStyleOverride: SealStampStyle? = nil
     var sealTransliterationOverride: String? = nil
     var shadowStyleOverride: ShadowStyle? = nil
+    /// English edition only: the reading printed with the Chinese artwork.
+    var translation: ShareTranslation? = nil
+    /// Room kept clear for on-screen chrome when the artwork fills the screen.
+    var extraTopPadding: CGFloat = 0
+    var extraBottomPadding: CGFloat = 0
 
     private var usesVerticalText: Bool {
         usesVerticalTextOverride ?? storedUsesVerticalText
-    }
-
-    private var poemLineSpacing: CGFloat {
-        lines.count > 4 ? 44 : 64
-    }
-
-    private var poemFontSize: CGFloat {
-        lines.count > 4 ? 42 : 58
-    }
-
-    private var poemCharacterSpacing: CGFloat {
-        lines.count > 4 ? 15 : 19
     }
 
     var body: some View {
@@ -2515,7 +2903,12 @@ struct SharePoemArtwork: View {
                     .opacity(0.64)
             }
 
-            if usesVerticalText {
+            if let translation {
+                switch layout {
+                case .portrait: bilingualPortraitBody(translation)
+                case .landscape: bilingualLandscapeBody(translation)
+                }
+            } else if usesVerticalText {
                 verticalBody
             } else {
                 switch layout {
@@ -2527,34 +2920,148 @@ struct SharePoemArtwork: View {
     }
 
     private var verticalBody: some View {
-        VerticalPoemComposition(columnSpacing: lines.count > 4 ? 34 : 54, minimumGap: 40) {
-            VStack(alignment: .leading, spacing: 36) {
-                Spacer()
-                HStack(alignment: .top, spacing: 14) {
-                    VerticalText(lunarDateText, font: typeface.font(size: 28), color: .mutedInk, spacing: 10)
-                    if let locationMark {
-                        VerticalText(compactInscriptionText(locationMark), font: typeface.font(size: 28), color: .mutedInk, spacing: 10)
-                    }
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = layout == .portrait ? 90 : 110
+            let verticalPadding: CGFloat = layout == .portrait ? 160 : 130
+            verticalComposition(
+                width: geometry.size.width - horizontalPadding * 2,
+                height: geometry.size.height - verticalPadding * 2 - extraTopPadding - extraBottomPadding,
+                minimumVerseSize: Self.minimumVerseSize
+            )
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, verticalPadding + extraTopPadding)
+            .padding(.bottom, verticalPadding + extraBottomPadding)
+        }
+    }
+
+    /// Verse columns, title, colophon and seal fitted to `width` × `height`.
+    private func verticalComposition(width: CGFloat, height: CGFloat, minimumVerseSize: CGFloat) -> some View {
+        let fit = verticalLayout(width: width, height: height, minimumVerseSize: minimumVerseSize)
+        return VerticalPoemComposition(columnSpacing: fit.columnSpacing, minimumGap: Self.inscriptionGap) {
+            HStack(alignment: .top, spacing: 14) {
+                ArtworkColumnText(text: lunarDateText, fontSize: 28, color: .mutedInk, spacing: 10)
+                if let locationMark {
+                    ArtworkColumnText(text: inscriptionText(locationMark, isExcerpt: fit.isExcerpt), fontSize: 28, color: .mutedInk, spacing: 10)
                 }
-                if showsSeal && !sealName.isEmpty {
-                    SealStampView(name: sealName, style: sealStyleOverride, size: 104, transliterationOverrideValue: sealTransliterationOverride)
-                }
+            }
+        } seal: {
+            if showsSeal && !sealName.isEmpty {
+                SealStampView(name: sealName, style: sealStyleOverride, size: Self.sealSize, transliterationOverrideValue: sealTransliterationOverride)
             }
         } verses: {
             // Traditional Chinese verse is read top-to-bottom, beginning
             // with the rightmost column and continuing toward the left.
-            ForEach(Array(lines.indices.reversed()), id: \.self) { index in
-                VerticalText(lines[index], font: typeface.font(size: poemFontSize), spacing: poemCharacterSpacing)
+            ForEach(Array(fit.columns.indices.reversed()), id: \.self) { index in
+                VerticalText(fit.columns[index], font: typeface.font(size: fit.fontSize), spacing: fit.characterSpacing)
             }
         } title: {
             if showsTitle {
                 // The title is the rightmost, first-read column.
-                VerticalText(imageTitle, font: typeface.font(size: 44), color: .mutedInk, spacing: 16)
+                ArtworkColumnText(text: imageTitle, fontSize: fit.titleFontSize, color: .mutedInk, spacing: fit.titleFontSize * 0.36)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, layout == .portrait ? 90 : 110)
-        .padding(.vertical, layout == .portrait ? 160 : 130)
+    }
+
+    /// "錄李白詩" becomes "節錄李白詩" when only the opening verses are shown.
+    private func inscriptionText(_ mark: String, isExcerpt: Bool) -> String {
+        let text = compactInscriptionText(mark)
+        return isExcerpt && text.hasPrefix("錄") ? "節" + text : text
+    }
+
+    private static let inscriptionGap: CGFloat = 40
+    /// Below this canvas size verse becomes hard to read on a phone.
+    private static let minimumVerseSize: CGFloat = 32
+    private static let sealSize: CGFloat = 104
+    private static let clausePunctuation = CharacterSet(charactersIn: "，。！？；：、,.!?;:")
+    /// A full-width space leaves one quiet cell between clauses sharing a column.
+    private static let clauseGap = "\u{3000}"
+
+    /// Columns and metrics sized so the whole poem stays on one sheet.
+    private struct VerticalLayout {
+        let columns: [String]
+        let fontSize: CGFloat
+        let characterSpacing: CGFloat
+        let columnSpacing: CGFloat
+        let titleFontSize: CGFloat
+        var isExcerpt = false
+    }
+
+    /// Always vertical, never scrolling. Prefer one clause per column; when
+    /// that would crowd the sheet, give each verse (comma plus full stop) its
+    /// own column; a very long poem is excerpted from its opening verses.
+    private func verticalLayout(width: CGFloat, height: CGFloat, minimumVerseSize: CGFloat) -> VerticalLayout {
+        let verses = lines.map { line in
+            line.components(separatedBy: Self.clausePunctuation)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+        .filter { !$0.isEmpty }
+        let clauses = verses.flatMap { $0 }
+        guard !clauses.isEmpty else {
+            return VerticalLayout(columns: [], fontSize: 58, characterSpacing: 19, columnSpacing: 54, titleFontSize: 44)
+        }
+
+        let fontName = typeface.resolvedFontName
+        let referenceFont = fontName.flatMap { UIFont(name: $0, size: 100) } ?? UIFont.systemFont(ofSize: 100)
+        let lineHeightRatio = referenceFont.lineHeight / 100
+        let titleLength = showsTitle ? imageTitle.count : 0
+        let titleIsLatin = !imageTitle.containsCJK
+        let latinTitleWidth = (imageTitle as NSString).size(withAttributes: [.font: referenceFont]).width
+        let inscriptionWidth: CGFloat = max(showsSeal && !sealName.isEmpty ? Self.sealSize : 0, locationMark == nil ? 28 : 70)
+
+        // The largest verse size (up to the familiar sizes for short poems)
+        // at which these columns fit both across and down the sheet.
+        func layout(for columns: [String]) -> VerticalLayout {
+            let few = columns.count <= 4
+            let maximum: CGFloat = few ? 58 : 42
+            let spacingRatio: CGFloat = few ? 19.0 / 58 : 15.0 / 42
+            let columnRatio: CGFloat = few ? 54.0 / 58 : 34.0 / 42
+            let longest = CGFloat(columns.map(\.count).max() ?? 1)
+            var size = maximum
+            while size > 8 {
+                let titleSize = min(44, size)
+                let titleWidth = showsTitle ? titleSize + size * columnRatio : 0
+                let across = CGFloat(columns.count) * size + CGFloat(columns.count - 1) * size * columnRatio
+                    + titleWidth + Self.inscriptionGap + inscriptionWidth
+                let down = longest * size * lineHeightRatio + (longest - 1) * size * spacingRatio
+                if across <= width && down <= height { break }
+                size -= 1
+            }
+            // A long title shrinks on its own rather than pulling the verse down.
+            var titleSize = min(44, size)
+            let titleCount = CGFloat(titleLength)
+            func titleExtent(at size: CGFloat) -> CGFloat {
+                if titleIsLatin { return latinTitleWidth * size / 100 }
+                return titleCount * size * lineHeightRatio + (titleCount - 1) * size * 0.36
+            }
+            while titleCount > 0 && titleSize > 8 && titleExtent(at: titleSize) > height {
+                titleSize -= 1
+            }
+            return VerticalLayout(
+                columns: columns,
+                fontSize: size,
+                characterSpacing: size * spacingRatio,
+                columnSpacing: size * columnRatio,
+                titleFontSize: titleSize
+            )
+        }
+
+        let byClause = layout(for: clauses)
+        if byClause.fontSize >= 40 { return byClause }
+
+        let verseColumns = verses.map { $0.joined(separator: Self.clauseGap) }
+        let byVerse = layout(for: verseColumns)
+        if byVerse.fontSize >= minimumVerseSize || verseColumns.count == 1 { return byVerse }
+
+        // Too long to read on one sheet: keep the opening verses that still
+        // fit at a legible size, and mark the colophon as an excerpt.
+        var count = verseColumns.count - 1
+        while count > 1 && layout(for: Array(verseColumns.prefix(count))).fontSize < minimumVerseSize {
+            count -= 1
+        }
+        var excerpt = layout(for: Array(verseColumns.prefix(count)))
+        excerpt.isExcerpt = true
+        return excerpt
     }
 
     /// Rows and metrics for a horizontal layout, computed adaptively: a verse
@@ -2644,6 +3151,187 @@ struct SharePoemArtwork: View {
         .padding(.bottom, 85)
     }
 
+    // MARK: English edition — Chinese artwork with the English reading
+
+    /// Chinese verse on top, the English reading below — the pairing the
+    /// onboarding page introduces. The reading takes at most ~45% of the sheet.
+    private func bilingualPortraitBody(_ translation: ShareTranslation) -> some View {
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = 100
+            let topPadding = 130 + extraTopPadding
+            let bottomPadding = 110 + extraBottomPadding
+            let width = geometry.size.width - horizontalPadding * 2
+            let height = geometry.size.height - topPadding - bottomPadding
+            let gap: CGFloat = 64
+            let reading = Self.readingMetrics(translation, width: width, maxHeight: height * 0.45, sizes: 22...30)
+            let poemHeight = max(height - reading.height - gap, 1)
+
+            VStack(alignment: .leading, spacing: gap) {
+                bilingualPoem(width: width, height: poemHeight)
+                    .frame(width: width, height: poemHeight, alignment: .top)
+                ShareReadingBlock(translation: translation, metrics: reading)
+                    .frame(width: width, alignment: .leading)
+            }
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, topPadding)
+            .padding(.bottom, bottomPadding)
+        }
+    }
+
+    /// Chinese verse on the left, the English reading beside it.
+    private func bilingualLandscapeBody(_ translation: ShareTranslation) -> some View {
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = 110
+            let topPadding = 100 + extraTopPadding
+            let bottomPadding = 90 + extraBottomPadding
+            let width = geometry.size.width - horizontalPadding * 2
+            let height = geometry.size.height - topPadding - bottomPadding
+            let gap: CGFloat = 80
+            let readingWidth = (width - gap) * 0.42
+            let poemWidth = width - gap - readingWidth
+            let reading = Self.readingMetrics(translation, width: readingWidth, maxHeight: height, sizes: 20...28)
+
+            HStack(alignment: .center, spacing: gap) {
+                bilingualPoem(width: poemWidth, height: height)
+                    .frame(width: poemWidth, height: height, alignment: .top)
+                ShareReadingBlock(translation: translation, metrics: reading)
+                    .frame(width: readingWidth, alignment: .leading)
+            }
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, topPadding)
+            .padding(.bottom, bottomPadding)
+        }
+    }
+
+    /// With the English reading alongside, the verse may run smaller before
+    /// it is excerpted: the reading, not the calligraphy, carries the words.
+    private static let bilingualMinimumVerseSize: CGFloat = 26
+
+    @ViewBuilder
+    private func bilingualPoem(width: CGFloat, height: CGFloat) -> some View {
+        if usesVerticalText {
+            verticalComposition(width: width, height: height, minimumVerseSize: Self.bilingualMinimumVerseSize)
+        } else {
+            horizontalPoem(width: width, height: height)
+        }
+    }
+
+    private struct HorizontalFit {
+        let rows: [String]
+        let fontSize: CGFloat
+        var isExcerpt = false
+        var rowSpacing: CGFloat { fontSize * 0.55 }
+        var titleSize: CGFloat { fontSize * 0.8 }
+    }
+
+    /// Horizontal verse sized to a bounded region: one clause per row while
+    /// that stays large, otherwise whole verses, excerpted when still too long.
+    private func horizontalFit(width: CGFloat, height: CGFloat) -> HorizontalFit {
+        let footerHeight: CGFloat = 130
+        let available = height - footerHeight
+        func size(for rows: [String]) -> CGFloat {
+            let longest = CGFloat(rows.map(\.count).max() ?? 1)
+            let count = CGFloat(rows.count)
+            let units = (showsTitle ? 0.8 * 1.35 + 0.55 : 0) + count * 1.35 + (count - 1) * 0.55
+            return min(64, width / (longest * 1.02), available / units)
+        }
+        let clauses = lines.flatMap(PoemVerseSplitter.split)
+        let byClause = size(for: clauses)
+        if byClause >= 40 || clauses.count == lines.count {
+            return HorizontalFit(rows: clauses, fontSize: byClause)
+        }
+        let byVerse = size(for: lines)
+        if byVerse >= Self.bilingualMinimumVerseSize || lines.count == 1 {
+            return HorizontalFit(rows: lines, fontSize: byVerse)
+        }
+        var count = lines.count - 1
+        while count > 1 && size(for: Array(lines.prefix(count))) < Self.bilingualMinimumVerseSize {
+            count -= 1
+        }
+        let rows = Array(lines.prefix(count))
+        return HorizontalFit(rows: rows, fontSize: size(for: rows), isExcerpt: true)
+    }
+
+    private func horizontalPoem(width: CGFloat, height: CGFloat) -> some View {
+        let fit = horizontalFit(width: width, height: height)
+        let colophon = [lunarDateText, locationMark.map { inscriptionText($0, isExcerpt: fit.isExcerpt) } ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\u{3000}")
+        return VStack(alignment: .leading, spacing: fit.rowSpacing) {
+            if showsTitle {
+                Text(imageTitle.poemScript(script))
+                    .font(typeface.font(size: fit.titleSize))
+                    .foregroundStyle(Color.mutedInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
+            ForEach(Array(fit.rows.enumerated()), id: \.offset) { _, row in
+                Text(row.poemScript(script))
+                    .font(typeface.font(size: fit.fontSize))
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+            HStack(alignment: .bottom) {
+                Text(colophon.poemScript(script))
+                    .font(typeface.font(size: 26))
+                    .foregroundStyle(Color.mutedInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: 24)
+                if showsSeal && !sealName.isEmpty {
+                    SealStampView(name: sealName, style: sealStyleOverride, size: 96, transliterationOverrideValue: sealTransliterationOverride)
+                }
+            }
+        }
+    }
+
+    /// The largest reading size that fits `maxHeight`. A reading too long even
+    /// at the smallest size keeps its opening sentences and ends in an ellipsis.
+    private static func readingMetrics(
+        _ translation: ShareTranslation,
+        width: CGFloat,
+        maxHeight: CGFloat,
+        sizes: ClosedRange<CGFloat>
+    ) -> ShareReadingMetrics {
+        func height(_ text: String, _ size: CGFloat) -> CGFloat {
+            ShareReadingMetrics(text: text, bodySize: size, height: 0)
+                .measuredHeight(title: translation.title, byline: translation.byline, width: width)
+        }
+        var size = sizes.upperBound
+        while size > sizes.lowerBound && height(translation.text, size) > maxHeight {
+            size -= 1
+        }
+        var text = translation.text
+        if height(text, size) > maxHeight {
+            text = Self.openingText(of: text, fitting: { height($0, size) <= maxHeight })
+        }
+        return ShareReadingMetrics(text: text, bodySize: size, height: height(text, size))
+    }
+
+    /// Whole sentences while they fit; whole words if not even one does.
+    private static func openingText(of text: String, fitting fits: (String) -> Bool) -> String {
+        func pieces(_ options: String.EnumerationOptions) -> [String] {
+            var result: [String] = []
+            text.enumerateSubstrings(in: text.startIndex..., options: options) { _, range, enclosing, _ in
+                result.append(String(text[options == .bySentences ? range : enclosing]))
+            }
+            return result
+        }
+        for options in [String.EnumerationOptions.bySentences, .byWords] {
+            var kept = ""
+            for piece in pieces(options) {
+                let candidate = (kept + piece).trimmingCharacters(in: .whitespaces)
+                guard fits(candidate + " …") else { break }
+                kept = options == .bySentences ? candidate + " " : kept + piece
+            }
+            let trimmed = kept.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed + " …" }
+        }
+        return "…"
+    }
+
     private var inscription: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(lunarDateText.poemScript(script))
@@ -2654,6 +3342,116 @@ struct SharePoemArtwork: View {
                     .font(typeface.font(size: 30))
                     .foregroundStyle(Color.mutedInk)
             }
+        }
+    }
+}
+
+/// Type sizes for the English reading on a share image, with the measured
+/// height the layout reserves for it.
+private struct ShareReadingMetrics {
+    let text: String
+    let bodySize: CGFloat
+    let height: CGFloat
+
+    var titleSize: CGFloat { bodySize * 1.3 }
+    var bylineSize: CGFloat { bodySize * 0.8 }
+    var lineSpacing: CGFloat { bodySize * 0.38 }
+    var bylineGap: CGFloat { bodySize * 0.3 }
+    /// Space above and below the short cinnabar rule.
+    var ruleGap: CGFloat { bodySize * 0.8 }
+    static let ruleHeight: CGFloat = 2
+
+    static func serif(size: CGFloat, weight: UIFont.Weight = .regular, italic: Bool = false) -> UIFont {
+        var descriptor = UIFont.systemFont(ofSize: size, weight: weight).fontDescriptor
+        descriptor = descriptor.withDesign(.serif) ?? descriptor
+        if italic {
+            descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor
+        }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    private static func height(of text: String, font: UIFont, width: CGFloat, lineSpacing: CGFloat = 0) -> CGFloat {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = lineSpacing
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph],
+            context: nil
+        )
+        return ceil(rect.height)
+    }
+
+    /// Mirrors `ShareReadingBlock`, with a little slack for SwiftUI's line breaking.
+    func measuredHeight(title: String, byline: String, width: CGFloat) -> CGFloat {
+        let titleHeight = Self.height(of: title, font: Self.serif(size: titleSize, italic: true), width: width)
+        let bylineHeight = byline.isEmpty ? 0 : bylineGap + Self.height(of: byline, font: Self.serif(size: bylineSize), width: width)
+        let bodyHeight = Self.height(of: text, font: Self.serif(size: bodySize, weight: .light), width: width, lineSpacing: lineSpacing)
+        return (titleHeight + bylineHeight + ruleGap * 2 + Self.ruleHeight + bodyHeight) * 1.04
+    }
+}
+
+/// English title, byline and reading, on a soft wash of paper so the words
+/// stay legible where they cross the painting.
+private struct ShareReadingBlock: View {
+    let translation: ShareTranslation
+    let metrics: ShareReadingMetrics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(translation.title)
+                .font(.system(size: metrics.titleSize, weight: .regular, design: .serif))
+                .italic()
+                .foregroundStyle(Color.ink)
+            if !translation.byline.isEmpty {
+                Text(translation.byline)
+                    .font(.system(size: metrics.bylineSize, design: .serif))
+                    .foregroundStyle(Color.mutedInk)
+                    .padding(.top, metrics.bylineGap)
+            }
+            Rectangle()
+                .fill(Color.cinnabar.opacity(0.75))
+                .frame(width: metrics.bodySize * 1.8, height: ShareReadingMetrics.ruleHeight)
+                .padding(.vertical, metrics.ruleGap)
+            Text(metrics.text)
+                .font(.system(size: metrics.bodySize, weight: .light, design: .serif))
+                .lineSpacing(metrics.lineSpacing)
+                .foregroundStyle(Color.ink.opacity(0.86))
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            Rectangle()
+                .fill(Color.white.opacity(0.7))
+                .padding(-metrics.bodySize * 1.4)
+                .blur(radius: metrics.bodySize * 1.1)
+        }
+    }
+}
+
+/// A vertical artwork column that also accepts Latin text (an English title
+/// or place name), turned a quarter clockwise as in Chinese books — unlike
+/// `VerticalText`, which falls back to a horizontal label for interface text.
+private struct ArtworkColumnText: View {
+    @Environment(\.poemTypeface) private var typeface
+    let text: String
+    let fontSize: CGFloat
+    var color: Color = .ink
+    let spacing: CGFloat
+
+    var body: some View {
+        if text.containsCJK || text.isEmpty {
+            VerticalText(text, font: typeface.font(size: fontSize), color: color, spacing: spacing)
+        } else {
+            let font = typeface.resolvedFontName.flatMap { UIFont(name: $0, size: fontSize) } ?? UIFont.systemFont(ofSize: fontSize)
+            let length = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+            let thickness = ceil(font.lineHeight)
+            Text(text)
+                .font(typeface.font(size: fontSize))
+                .foregroundStyle(color)
+                .fixedSize()
+                .frame(width: length, height: thickness)
+                .rotationEffect(.degrees(90))
+                .frame(width: thickness, height: length)
         }
     }
 }
@@ -3134,7 +3932,7 @@ struct PaperBackground: View {
     var shadowStyleOverride: ShadowStyle? = nil
 
     private var shadowStyle: ShadowStyle {
-        shadowStyleOverride ?? ShadowStyle(rawValue: shadowStyleRaw) ?? .morning
+        shadowStyleOverride ?? ShadowStyle(rawValue: shadowStyleRaw) ?? .defaultStyle
     }
 
     private var background: PoemBackground {
@@ -3176,6 +3974,10 @@ private extension Color {
     static let ink = Color(red: 0.08, green: 0.075, blue: 0.07)
     static let mutedInk = Color(red: 0.34, green: 0.32, blue: 0.29)
     static let cinnabar = Color(red: 0.77, green: 0.02, blue: 0.06)
+}
+
+extension Color {
+    /// The membership crown's gold, shared with the poem list's Pro filter.
     static let premiumGold = Color(red: 0.94, green: 0.64, blue: 0.08)
 }
 
@@ -3212,6 +4014,12 @@ enum PoemFontStyle {
         case .simplified:
             return "简体中文"
         }
+    }
+}
+
+extension String {
+    var containsCJK: Bool {
+        unicodeScalars.contains { CharacterSet.cjk.contains($0) }
     }
 }
 
@@ -3276,20 +4084,40 @@ enum PoemTypeface: String, CaseIterable, Identifiable {
         self == .wenyue || self == .wenkai || self == .kaiti
     }
 
+    /// Always the Chinese name: in both languages the picker shows it set in the face itself,
+    /// since the Han glyphs are what distinguish these fonts.
     var displayName: String {
         switch self {
         case .wenyue:
-            return AppLanguage.copy("文悦仿宋", "Wenyue FangSong")
+            return "文悦仿宋"
         case .wenkai:
-            return AppLanguage.copy("霞鹜文楷", "LXGW WenKai")
+            return "霞鹜文楷"
         case .songti:
-            return AppLanguage.copy("思源宋体", "Source Han Serif")
+            return "思源宋体"
         case .kaiti:
-            return AppLanguage.copy("汇文明朝体", "Huiwen Mincho")
+            return "汇文明朝体"
         case .mashan:
-            return AppLanguage.copy("马善政体", "Ma Shan Zheng")
+            return "马善政体"
         case .xiaozhuan:
-            return AppLanguage.copy("方正小篆", "FZ Small Seal")
+            return "方正小篆"
+        }
+    }
+
+    /// Short English style label shown under the Chinese name in the English UI.
+    var englishStyleName: String {
+        switch self {
+        case .wenyue:
+            return "FangSong"
+        case .wenkai:
+            return "Kai · Brush"
+        case .songti:
+            return "Song · Serif"
+        case .kaiti:
+            return "Mincho"
+        case .mashan:
+            return "Calligraphy"
+        case .xiaozhuan:
+            return "Seal Script"
         }
     }
 

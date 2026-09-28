@@ -13,12 +13,10 @@ struct ClassicPoet: Identifiable, Hashable, Sendable {
     let requiresMembership: Bool
 
     var poems: [ClassicPoem] {
-        let curated = ClassicPoemLibrary.featured.filter { $0.author == name }
-        let tangShi = TangShiThreeHundredLibrary.poems.filter { $0.author == name }
-        let songCi = SongCiThreeHundredLibrary.poems.filter { $0.author == name }
         var seen = Set<String>()
-        return (curated + tangShi + songCi).filter { poem in
-            seen.insert("\(poem.title)|\(poem.author)").inserted
+        return ClassicPoemLibrary.allPoems.filter { poem in
+            guard poem.author == name else { return false }
+            return seen.insert("\(poem.title)|\(poem.author)").inserted
         }
     }
 }
@@ -476,14 +474,54 @@ enum ClassicPoetLibrary {
             }
     }()
 
-    /// Names of the curated famous poets, normalized to simplified Chinese.
-    /// Poems by these authors read for free; everything else in the Tang/Song
-    /// collections is members-only.
+    /// Names of the featured famous poets, normalized to simplified Chinese.
+    /// Their poems read for free; everything else is members-only.
     static let famousAuthorNames: Set<String> = Set(featured.map { $0.name.poemScript(.simplified) })
 
     static func isFamousAuthor(_ name: String) -> Bool {
         famousAuthorNames.contains(name.poemScript(.simplified))
     }
+
+    /// Each famous poet's best-known works, hand-picked; the poem list leads
+    /// with these instead of the collections' opening ancient-style poems.
+    /// Titles are simplified, as in the collections (夜思 appears as its edition 静夜思).
+    static let signaturePoemTitles: [String: [String]] = [
+        "李白": ["静夜思", "望庐山瀑布", "将进酒"],
+        "孟浩然": ["春晓", "过故人庄", "宿建德江"],
+        "王之涣": ["登鹳雀楼", "出塞"],
+        "柳宗元": ["江雪", "渔翁", "溪居"],
+        "王维": ["山居秋暝", "相思", "九月九日忆山东兄弟"],
+        "张继": ["枫桥夜泊"],
+        "苏轼": ["水调歌头", "题西林壁", "饮湖上初晴后雨·其二"],
+        "李清照": ["声声慢", "如梦令·常记溪亭日暮", "醉花阴"],
+        "陆游": ["卜算子·咏梅"],
+        "杜甫": ["春望", "登高", "望岳"],
+        "白居易": ["赋得古原草送别", "长恨歌", "琵琶行并序"],
+        "王昌龄": ["出塞", "芙蓉楼送辛渐", "闺怨"],
+        "李商隐": ["锦瑟", "夜雨寄北", "登乐游原"],
+        "柳永": ["雨霖铃", "八声甘州", "凤栖梧・蝶恋花"],
+        "辛弃疾": ["青玉案", "永遇乐", "菩萨蛮"],
+        "刘禹锡": ["乌衣巷", "西塞山怀古", "蜀先主庙"],
+        "杜牧": ["泊秦淮", "赤壁", "秋夕"],
+        "王勃": ["送杜少府之任蜀州"],
+        "韩愈": ["山石", "石鼓歌", "八月十五夜赠张功曹"],
+        "高适": ["燕歌行并序", "送李少府贬峡中王少府贬长沙"],
+        "岑参": ["白雪歌送武判官归京", "逢入京使", "走马川行奉送封大夫出师西征"],
+        "范仲淹": ["苏幕遮", "御街行"],
+        "欧阳修": ["采桑子", "踏莎行", "浪淘沙"],
+        "王安石": ["桂枝香", "清平乐", "千秋岁引"],
+        "秦观": ["满庭芳", "浣溪沙"]
+    ]
+
+    static let signaturePoemKeys: Set<String> = {
+        let keys = Set(signaturePoemTitles.flatMap { author, titles in titles.map { "\($0)|\(author)" } })
+        #if DEBUG
+        let known = Set(ClassicPoemLibrary.allPoems.map(\.accessKey))
+        let missing = keys.subtracting(known)
+        assert(missing.isEmpty, "Signature poem titles not found in the library: \(missing.sorted())")
+        #endif
+        return keys
+    }()
 
     /// The poet matching an author name, tolerant of simplified/traditional
     /// variants. Returns nil for authors who have no profile (e.g. anonymous works).
@@ -519,5 +557,42 @@ enum ClassicPoetLibrary {
             collectionTitle: collectionTitle,
             requiresMembership: requiresMembership
         )
+    }
+}
+
+/// Poets saved from their profile page, newest first.
+enum ClassicPoetFavorites {
+    private static let key = "classicPoetFavoriteIDs"
+
+    static func loadIDs() -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func contains(_ id: String) -> Bool {
+        loadIDs().contains(id)
+    }
+
+    static func loadPoets() -> [ClassicPoet] {
+        let all = ClassicPoetLibrary.featured
+            + ClassicPoetLibrary.tangShiThreeHundred
+            + ClassicPoetLibrary.songCiThreeHundred
+        let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return loadIDs().compactMap { byID[$0] }
+    }
+
+    /// Returns whether the poet is saved afterwards.
+    @discardableResult
+    static func toggle(_ id: String) -> Bool {
+        var ids = loadIDs()
+        let isSaved: Bool
+        if let index = ids.firstIndex(of: id) {
+            ids.remove(at: index)
+            isSaved = false
+        } else {
+            ids.insert(id, at: 0)
+            isSaved = true
+        }
+        UserDefaults.standard.set(ids, forKey: key)
+        return isSaved
     }
 }

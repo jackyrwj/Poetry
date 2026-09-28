@@ -4,107 +4,136 @@ import Foundation
 struct PoemMusicTrack: Identifiable, Hashable {
     let id: String
     let resourceName: String
-    let title: String
-    let subtitle: String
+    let zhTitle: String
+    let enTitle: String
+    let zhSubtitle: String
+    let enSubtitle: String
+    let originalTitle: String
+    let author: String
     let sourceURL: URL
-    let license: String
 
-    var localizedTitle: String {
-        switch id {
-        case "yangguan": return AppLanguage.copy(title, "Yangguan Sandie")
-        case "zuiyu": return AppLanguage.copy(title, "Fisherman's Evening Song")
-        case "pingsha": return AppLanguage.copy(title, "Wild Geese Descending on the Sandbank")
-        case "liushui": return AppLanguage.copy(title, "Flowing Water")
-        case "peilan": return AppLanguage.copy(title, "Fragrant Orchid")
-        case "qiufeng": return AppLanguage.copy(title, "Song of the Autumn Wind")
-        default: return title
-        }
-    }
+    var localizedTitle: String { AppLanguage.copy(zhTitle, enTitle) }
+    var localizedSubtitle: String { AppLanguage.copy(zhSubtitle, enSubtitle) }
 
-    var localizedSubtitle: String {
-        switch id {
-        case "yangguan": return AppLanguage.copy(subtitle, "Guqin · Farewell and moonlit nights")
-        case "zuiyu": return AppLanguage.copy(subtitle, "Guqin · River boats at dusk")
-        case "pingsha": return AppLanguage.copy(subtitle, "Guqin · Open landscapes")
-        case "liushui": return AppLanguage.copy(subtitle, "Guqin · Springs and waterfalls")
-        case "peilan": return AppLanguage.copy(subtitle, "Guqin · Orchids and quiet retreat")
-        case "qiufeng": return AppLanguage.copy(subtitle, "Qin song · Autumn longing")
-        default: return subtitle
-        }
-    }
+    static let farewell = PoemMusicTrack(
+        id: "farewell",
+        resourceName: "farewell_huangshan",
+        zhTitle: "离愁",
+        enTitle: "Parting",
+        zhSubtitle: "二胡 · 送别与离情",
+        enSubtitle: "Erhu · Farewells and parting",
+        originalTitle: "Huangshan Mountain",
+        author: "ED-MusicProductions",
+        sourceURL: URL(string: "https://pixabay.com/music/adventure-huangshan-mountain-402302/")!
+    )
+    static let moonlit = PoemMusicTrack(
+        id: "moonlit",
+        resourceName: "moonlit_flute_serenade",
+        zhTitle: "月夜",
+        enTitle: "Moonlit Night",
+        zhSubtitle: "竹笛 · 月色与乡思",
+        enSubtitle: "Bamboo flute · Moonlight and home",
+        originalTitle: "Chinese Flute Serenade",
+        author: "NourishedByMusic",
+        sourceURL: URL(string: "https://pixabay.com/music/world-chinese-flute-serenade-147545/")!
+    )
+    static let frontier = PoemMusicTrack(
+        id: "frontier",
+        resourceName: "frontier_china_nature",
+        zhTitle: "边塞",
+        enTitle: "Frontier",
+        zhSubtitle: "笛与弦 · 大漠与关山",
+        enSubtitle: "Flute and strings · Deserts and passes",
+        originalTitle: "China Nature",
+        author: "Abydos_Music",
+        sourceURL: URL(string: "https://pixabay.com/music/china-china-nature-199638/")!
+    )
+    static let river = PoemMusicTrack(
+        id: "river",
+        resourceName: "river_peaceful_morning",
+        zhTitle: "江舟",
+        enTitle: "River Boat",
+        zhSubtitle: "古筝、琵琶 · 江湖与舟行",
+        enSubtitle: "Guzheng and pipa · Rivers and boats",
+        originalTitle: "A Peaceful Morning",
+        author: "kaazoom",
+        sourceURL: URL(string: "https://pixabay.com/music/folk-a-peaceful-morning-traditional-chinese-style-folk-music-129024/")!
+    )
+    static let hermit = PoemMusicTrack(
+        id: "hermit",
+        resourceName: "hermit_chinese_relaxing",
+        zhTitle: "山居",
+        enTitle: "Mountain Retreat",
+        zhSubtitle: "民乐 · 山水与隐逸",
+        enSubtitle: "Folk instruments · Hills and seclusion",
+        originalTitle: "Chinese Relaxing",
+        author: "Villatic_Music",
+        sourceURL: URL(string: "https://pixabay.com/music/world-chinese-relaxing-asian-meditation-traditional-music-285376/")!
+    )
+    static let spring = PoemMusicTrack(
+        id: "spring",
+        resourceName: "spring_new_year_flute",
+        zhTitle: "春日",
+        enTitle: "Spring Day",
+        zhSubtitle: "竹笛 · 明快与生机",
+        enSubtitle: "Bamboo flute · Brightness and new life",
+        originalTitle: "Chinese New Year Flute",
+        author: "NourishedByMusic",
+        sourceURL: URL(string: "https://pixabay.com/music/china-chinese-new-year-flute-190421/")!
+    )
+    static let autumn = PoemMusicTrack(
+        id: "autumn",
+        resourceName: "autumn_ink_not_yet_dry",
+        zhTitle: "秋思",
+        enTitle: "Autumn Thoughts",
+        zhSubtitle: "弦与管 · 悲秋与怀远",
+        enSubtitle: "Strings and winds · Autumn longing",
+        originalTitle: "墨未干，人已远 (Ink Not Yet Dry, The Person Already Gone)",
+        author: "AiCanvas",
+        sourceURL: URL(string: "https://pixabay.com/music/modern-classical-%E5%A2%A8%E6%9C%AA%E5%B9%B2%E4%BA%BA%E5%B7%B2%E8%BF%9C-ink-not-yet-dry-the-person-already-gone-491635/")!
+    )
+    static let snow = PoemMusicTrack(
+        id: "snow",
+        resourceName: "snow_silent_valley",
+        zhTitle: "寒雪",
+        enTitle: "Winter Snow",
+        zhSubtitle: "竹笛 · 清寒与孤高",
+        enSubtitle: "Bamboo flute · Cold air and solitude",
+        originalTitle: "Flute of the Silent Valley",
+        author: "djovan",
+        sourceURL: URL(string: "https://pixabay.com/music/ambient-flute-of-the-silent-valley-497085/")!
+    )
 
-    static let yangguan = PoemMusicTrack(
-        id: "yangguan",
-        resourceName: "guqin_yangguan_sandie",
-        title: "阳关三叠",
-        subtitle: "古琴 · 送别与月夜",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Guqin-Yangguan_Sandie.ogg")!,
-        license: "CC BY-SA 3.0 / GFDL"
-    )
-    static let zuiyu = PoemMusicTrack(
-        id: "zuiyu",
-        resourceName: "guqin_zuiyu_changwan",
-        title: "醉渔唱晚",
-        subtitle: "古琴 · 江舟与暮色",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Guqin-Zuiyu_Changwan.ogg")!,
-        license: "CC BY-SA 3.0"
-    )
-    static let pingsha = PoemMusicTrack(
-        id: "pingsha",
-        resourceName: "pingsha_luoyan",
-        title: "平沙落雁",
-        subtitle: "古琴 · 山水与旷远",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Pingsha_Luoyan.ogg")!,
-        license: "CC BY-SA 3.0 / CC BY 2.5 / GFDL"
-    )
-    static let liuShui = PoemMusicTrack(
-        id: "liushui",
-        resourceName: "liu_shui",
-        title: "流水",
-        subtitle: "古琴 · 泉瀑与清流",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Liu_Shui.ogg")!,
-        license: "CC BY 2.5 / CC BY-SA 3.0 / GFDL"
-    )
-    static let peiLan = PoemMusicTrack(
-        id: "peilan",
-        resourceName: "pei_lan",
-        title: "佩兰",
-        subtitle: "古琴 · 兰香与幽居",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Pei_Lan.ogg")!,
-        license: "CC BY 2.5 / CC BY-SA 3.0 / GFDL"
-    )
-    static let qiuFeng = PoemMusicTrack(
-        id: "qiufeng",
-        resourceName: "qiu_feng_ci",
-        title: "秋风词",
-        subtitle: "琴歌 · 秋意与怀远",
-        sourceURL: URL(string: "https://commons.wikimedia.org/wiki/File:Qiu_Feng_Ci.ogg")!,
-        license: "CC BY 2.5 / CC BY-SA 3.0 / GFDL"
-    )
-
-    static let all = [yangguan, zuiyu, pingsha, liuShui, peiLan, qiuFeng]
+    static let all = [farewell, moonlit, frontier, river, hermit, spring, autumn, snow]
 
     static func recommended(for poem: ClassicPoem) -> PoemMusicTrack {
-        let poemText = ([poem.title] + poem.lines + poem.tags).joined()
-        if poemText.contains("秋") { return qiuFeng }
+        // The title carries the clearest intent (送别、塞下、秋思…), so it wins
+        // over the background image, which only reflects the scenery.
+        let title = poem.title
+        if ["送", "别", "赠"].contains(where: title.contains) { return farewell }
+        if ["塞", "关", "征", "戍", "从军", "凉州"].contains(where: title.contains) { return frontier }
+        if title.contains("秋") { return autumn }
+        if title.contains("雪") { return snow }
+        if title.contains("春") { return spring }
+        if title.contains("月") { return moonlit }
 
         switch poem.background {
         case .boat, .lotus, .bridge:
-            return zuiyu
-        case .rain, .lamp:
-            return yangguan
-        case .autumn:
-            return qiuFeng
+            return river
+        case .rain, .autumn:
+            return autumn
+        case .lamp, .moon:
+            return moonlit
         case .frontier:
-            return pingsha
-        case .waterfall:
-            return liuShui
-        case .plum, .bamboo, .pavilion, .willow, .spring:
-            return peiLan
-        case .moon, .snow:
-            return yangguan
-        case .peaks, .none:
-            return pingsha
+            return frontier
+        case .willow:
+            return farewell
+        case .spring:
+            return spring
+        case .plum, .snow:
+            return snow
+        case .waterfall, .peaks, .pavilion, .bamboo, .none:
+            return hermit
         }
     }
 }
@@ -114,6 +143,7 @@ final class PoemMusicPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published private(set) var isPlaying = false
     @Published private(set) var errorMessage: String?
 
+    private static let volume: Float = 0.8
     private var player: AVAudioPlayer?
 
     func toggle(_ track: PoemMusicTrack) {
@@ -136,14 +166,18 @@ final class PoemMusicPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
 
         do {
-            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+            // `.ambient` is silenced by the ring/silent switch, so a tap on play
+            // produced no sound on muted phones. Playback is always user-initiated.
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
 
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.delegate = self
-            newPlayer.volume = 0.52
+            newPlayer.volume = 0
+            newPlayer.numberOfLoops = -1
             newPlayer.prepareToPlay()
             newPlayer.play()
+            newPlayer.setVolume(Self.volume, fadeDuration: 2.5)
             player = newPlayer
             activeTrack = track
             isPlaying = true
@@ -166,6 +200,7 @@ final class PoemMusicPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         player = nil
         activeTrack = nil
         isPlaying = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {

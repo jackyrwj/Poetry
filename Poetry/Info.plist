@@ -4,10 +4,10 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>诗客</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleDisplayName</key>
-	<string>织诗</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -19,19 +19,48 @@
 		<string>zh-Hant</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>织诗</string>
+	<string>诗客</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.raowenjie.Poetry</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>shike</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于在诗歌落款处写下你所在的城市。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于将诗笺图片保存到你的相册。</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>LXGWWenKaiLite-Regular.ttf</string>
+		<string>WenYueGuTiFangSongTC.otf</string>
+		<string>SourceHanSerifCN-ExtraLight.otf</string>
+		<string>HuiwenMincho.otf</string>
+		<string>MaShanZheng-Regular.ttf</string>
+		<string>FZXiaoZhuanTi.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
 	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -46,22 +75,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UILaunchScreen</key>
-	<dict>
-		<key>UIColorName</key>
-		<string>LaunchBackground</string>
-	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>用于在诗歌落款处写下你所在的城市。</string>
-	<key>UIAppFonts</key>
-	<array>
-		<string>LXGWWenKaiLite-Regular.ttf</string>
-		<string>WenYueGuTiFangSongTC.otf</string>
-		<string>SourceHanSerifCN-ExtraLight.otf</string>
-		<string>HuiwenMincho.otf</string>
-		<string>MaShanZheng-Regular.ttf</string>
-		<string>FZXiaoZhuanTi.ttf</string>
 	</array>
 </dict>
 </plist>
