@@ -455,26 +455,41 @@
   .d-en .by { color: var(--faint); font-size: 16px; margin-bottom: 20px; }
   .d-en .trans { font-size: 20px; line-height: 1.6; margin-bottom: 20px; text-wrap: pretty; }
   .d-en .note { color: var(--muted); font-size: 17px; border-left: 2px solid var(--cinnabar); padding-left: 16px; text-wrap: pretty; }
-  .d-actions { display: flex; align-items: center; gap: 14px; margin-top: 26px; }
-  .shuffle {
-    font: inherit;
-    font-size: 16px;
-    color: var(--cinnabar);
-    background: transparent;
-    border: 1px solid rgba(196, 5, 16, 0.3);
-    border-radius: 999px;
-    padding: 8px 18px;
-    cursor: pointer;
-    transition: background-color 0.2s, color 0.2s;
+  /* Carousel controls, spanning both columns under the poem */
+  .d-nav {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
   }
-  .shuffle:hover { background: var(--cinnabar); color: #fff; }
-  .d-actions small { color: var(--faint); font-size: 15px; }
+  .d-nav small { color: var(--faint); font-size: 15px; }
+  .d-controls { display: flex; align-items: center; gap: 4px; }
+  .d-dots { display: flex; align-items: center; }
+  .arrow {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--ink);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .arrow:hover { background: var(--cinnabar); border-color: var(--cinnabar); color: #fff; }
+  .arrow svg { width: 14px; height: 14px; }
+  .d-controls .pause { margin-left: 6px; }
   /* Every poem is stacked in the same grid cell, so the card is always as tall
      as the longest poem and never jumps when the poem changes. */
   .d-stack { display: grid; }
-  .d-stack > * { grid-area: 1 / 1; transition: opacity 0.35s ease, visibility 0.35s; }
+  .d-stack > * { grid-area: 1 / 1; transition: opacity 0.5s ease, transform 0.5s ease, visibility 0.5s; }
   .d-stack > .off { opacity: 0; visibility: hidden; }
   .d-han .d-stack > * { align-self: center; }
+  .daily-card { touch-action: pan-y; }
 
   /* Poets */
   .poets {
@@ -517,6 +532,8 @@
   summary::after { content: "+"; font-family: var(--serif); color: var(--cinnabar); font-size: 26px; line-height: 1; transition: transform 0.2s; }
   details[open] summary::after { transform: rotate(45deg); }
   details p { color: var(--muted); padding: 0 0 24px; max-width: 38em; }
+  .faq-contact { max-width: 780px; margin-top: 32px; color: var(--muted); text-wrap: pretty; }
+  .faq-contact a { color: var(--cinnabar); text-underline-offset: 3px; overflow-wrap: anywhere; }
 
   /* Closing CTA */
   .closing {
@@ -567,6 +584,9 @@
     html { scroll-behavior: auto; }
     .dapple { animation: none; }
     .d-stack > * { transition: none; }
+  }
+  @media (max-width: 560px) {
+    .d-nav { flex-direction: column-reverse; gap: 12px; }
   }
 </style>
 </head>
@@ -713,7 +733,7 @@
       <h2 id="daily-title">Try a poem now.</h2>
       <p class="section-lede">A sample of how a page reads in the app, with the original, the translation and a short note.</p>
 
-      <div class="daily-card">
+      <div class="daily-card" id="daily-card" role="region" aria-roledescription="carousel" aria-label="Sample poems">
         <div class="d-han" lang="zh-Hans">
           <div class="d-stack" id="d-han">
             <div>
@@ -724,7 +744,7 @@
           </div>
         </div>
         <div class="d-en">
-          <div class="d-stack" id="d-en" aria-live="polite">
+          <div class="d-stack" id="d-en" aria-live="off">
             <div>
               <h3>Bamboo Lodge</h3>
               <p class="by">Wang Wei · Tang dynasty · Five-character quatrain</p>
@@ -732,9 +752,20 @@
               <p class="note">Bamboo, music, a whistle, and moonlight create a quiet world complete in itself. The speaker is alone but not bereft: the moon becomes a companion.</p>
             </div>
           </div>
-          <div class="d-actions">
-            <button class="shuffle" type="button" id="shuffle">Another poem</button>
-            <small>One of 600+ in the app</small>
+        </div>
+        <div class="d-nav">
+          <small>One of 600+ poems in the app</small>
+          <div class="d-controls">
+            <button class="arrow" type="button" id="d-prev" aria-label="Previous poem">
+              <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M8.5 2.5 4 7l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="d-dots" id="d-dots"></div>
+            <button class="arrow" type="button" id="d-next" aria-label="Next poem">
+              <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5.5 2.5 10 7l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="pause" type="button" id="d-pause" aria-label="Pause the poems">
+              <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="0.5" width="2.6" height="9" rx="0.6" fill="currentColor"/><rect x="6.4" y="0.5" width="2.6" height="9" rx="0.6" fill="currentColor"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -822,6 +853,7 @@
           <p>Ink &amp; Verse is an iPhone app, available on the App Store.</p>
         </details>
       </div>
+      <p class="faq-contact" id="contact">Still have a question, found a mistake in a translation, or want to share an idea? Email <a href="mailto:raowenjieszu@gmail.com?subject=Ink%20%26%20Verse">raowenjieszu@gmail.com</a>. I read and reply to every message. You can also write from Settings in the app.</p>
     </div>
   </section>
 
@@ -843,7 +875,8 @@
 <footer>
   <div class="wrap foot">
     <p>&copy; 2026 Ink &amp; Verse <span lang="zh-Hans">· 诗客</span></p>
-    <nav aria-label="Legal">
+    <nav aria-label="Legal and contact">
+      <a href="mailto:raowenjieszu@gmail.com?subject=Ink%20%26%20Verse">Contact</a>
       <a href="privacy-en.html">Privacy Policy</a>
       <a href="terms-en.html">Terms of Use</a>
       <a href="privacy.html" lang="zh-Hans">隐私政策</a>
@@ -916,24 +949,110 @@
       enStack.appendChild(e);
     });
 
-    function show(i) {
-      [hanStack, enStack].forEach(function (stack) {
-        Array.prototype.forEach.call(stack.children, function (slide, k) {
-          slide.classList.toggle("off", k !== i);
+    var slides = [hanStack.children, enStack.children];
+    var count = poems.length, index = 0, paused = false, hover = false, visible = true, timer = null;
+    var DELAY = 9000, SHIFT = 40;
+    var dotsBox = $("d-dots"), pauseBtn = $("d-pause"), card = $("daily-card");
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    var dots = poems.map(function (p, i) {
+      var b = el("button", "dot");
+      b.type = "button";
+      b.setAttribute("aria-label", "Poem " + (i + 1) + ": " + p.et);
+      b.addEventListener("click", function () { show(i, i > index ? 1 : -1, true); });
+      dotsBox.appendChild(b);
+      return b;
+    });
+
+    // Slide the new poem in from one side while the old one leaves the other way.
+    function show(i, dir, fromUser) {
+      i = (i + count) % count;
+      slides.forEach(function (list) {
+        Array.prototype.forEach.call(list, function (slide, k) {
+          if (k === i) {
+            if (!reduce && dir && k !== index) {
+              slide.style.transition = "none";
+              slide.style.transform = "translateX(" + dir * SHIFT + "px)";
+              void slide.offsetWidth;
+              slide.style.transition = "";
+            }
+            slide.classList.remove("off");
+            slide.style.transform = "";
+            slide.removeAttribute("aria-hidden");
+          } else {
+            if (k === index && dir && !reduce) slide.style.transform = "translateX(" + -dir * SHIFT + "px)";
+            slide.classList.add("off");
+            slide.setAttribute("aria-hidden", "true");
+          }
         });
       });
+      index = i;
+      dots.forEach(function (d, k) { d.setAttribute("aria-current", k === i ? "true" : "false"); });
+      enStack.setAttribute("aria-live", fromUser ? "polite" : "off");
+      schedule();
     }
 
-    // Same poem for everyone on a given day, like the app's Poem of the Day.
+    function schedule() {
+      clearTimeout(timer);
+      if (!paused && !hover && visible) timer = setTimeout(function () { show(index + 1, 1); }, DELAY);
+    }
+
+    function setPaused(value) {
+      paused = value;
+      pauseBtn.setAttribute("aria-label", paused ? "Play the poems" : "Pause the poems");
+      pauseBtn.innerHTML = paused
+        ? '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 0.8v8.4L9.2 5z" fill="currentColor"/></svg>'
+        : '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="0.5" width="2.6" height="9" rx="0.6" fill="currentColor"/><rect x="6.4" y="0.5" width="2.6" height="9" rx="0.6" fill="currentColor"/></svg>';
+      schedule();
+    }
+
+    $("d-prev").addEventListener("click", function () { show(index - 1, -1, true); });
+    $("d-next").addEventListener("click", function () { show(index + 1, 1, true); });
+    pauseBtn.addEventListener("click", function () { setPaused(!paused); });
+
+    // Hold still while someone is reading or using the controls.
+    card.addEventListener("mouseenter", function () { hover = true; schedule(); });
+    card.addEventListener("mouseleave", function () { hover = false; schedule(); });
+    card.addEventListener("focusin", function () { hover = true; schedule(); });
+    card.addEventListener("focusout", function (e) {
+      if (!card.contains(e.relatedTarget)) { hover = false; schedule(); }
+    });
+    card.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") show(index - 1, -1, true);
+      else if (e.key === "ArrowRight") show(index + 1, 1, true);
+    });
+
+    // Swipe on touch screens.
+    var startX = null, startY = 0;
+    card.addEventListener("touchstart", function (e) {
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    }, { passive: true });
+    card.addEventListener("touchend", function (e) {
+      if (startX === null) return;
+      var dx = e.changedTouches[0].clientX - startX, dy = e.changedTouches[0].clientY - startY;
+      startX = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) show(index + 1, 1, true); else show(index - 1, -1, true);
+      }
+    }, { passive: true });
+
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(function (entries) {
+        visible = entries[0].isIntersecting;
+        schedule();
+      }, { threshold: 0.3 }).observe(card);
+    }
+    document.addEventListener("visibilitychange", function () {
+      visible = !document.hidden;
+      schedule();
+    });
+
+    // Start on the same poem for everyone on a given day, like the app's Poem of the Day.
     var start = new Date(new Date().getFullYear(), 0, 0);
     var day = Math.floor((new Date() - start) / 86400000);
-    var index = day % poems.length;
-    show(index);
-
-    $("shuffle").addEventListener("click", function () {
-      index = (index + 1) % poems.length;
-      show(index);
-    });
+    index = day % count;
+    show(index, 0);
+    if (reduce) setPaused(true);
   })();
 
   // Hero demo: cycle through the screen recordings inside the phone.
