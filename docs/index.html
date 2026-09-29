@@ -424,6 +424,55 @@
     background: rgba(255,255,255,0.7);
   }
 
+  /* Personal seal */
+  .seal-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: clamp(40px, 7vw, 96px);
+    align-items: center;
+  }
+  .seal-points { list-style: none; margin-top: 28px; display: grid; gap: 12px; max-width: 34em; }
+  .seal-points li { position: relative; padding-left: 22px; color: var(--muted); font-size: 18px; text-wrap: pretty; }
+  .seal-points li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 8px;
+    height: 8px;
+    border-radius: 1px;
+    background: var(--cinnabar);
+  }
+  .seal-stage { display: grid; justify-items: center; gap: 18px; }
+  .seal-imgs { display: grid; width: min(260px, 64vw); aspect-ratio: 1; }
+  .seal-imgs img {
+    grid-area: 1 / 1;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 6px 14px rgba(84, 8, 12, 0.14));
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2), visibility 0.4s;
+  }
+  .seal-imgs img.off { opacity: 0; visibility: hidden; transform: scale(1.12); }
+  .seal-caption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; font-size: 20px; }
+  .seal-en { font-style: italic; }
+  .seal-arrow { color: var(--faint); }
+  .seal-zh { font-family: var(--han); letter-spacing: 0.08em; }
+  .seal-py { color: var(--faint); font-size: 16px; }
+  .seal-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 340px; }
+  .seal-chip {
+    font: inherit;
+    font-size: 15px;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .seal-chip:hover { color: var(--cinnabar); border-color: rgba(196, 5, 16, 0.3); }
+  .seal-chip[aria-pressed="true"] { background: var(--cinnabar); border-color: var(--cinnabar); color: #fff; }
+
   /* Poem of the day */
   .daily { position: relative; overflow: hidden; }
   .daily::before {
@@ -565,7 +614,7 @@
   .foot a:hover { color: var(--cinnabar); }
 
   @media (max-width: 880px) {
-    .hero-grid, .daily-card { grid-template-columns: 1fr; }
+    .hero-grid, .daily-card, .seal-grid { grid-template-columns: 1fr; }
     .hero { padding-top: 16px; }
     .hero::before { -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 70%); mask-image: linear-gradient(to bottom, #000 0%, transparent 70%); opacity: 0.35; }
     .phone { width: min(280px, 76vw); }
@@ -584,6 +633,7 @@
     html { scroll-behavior: auto; }
     .dapple { animation: none; }
     .d-stack > * { transition: none; }
+    .seal-imgs img { transition: none; }
   }
   @media (max-width: 560px) {
     .d-nav { flex-direction: column-reverse; gap: 12px; }
@@ -724,6 +774,46 @@
         <li>Save the poems that move you</li>
         <li>Ink-wash paper backgrounds</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="band seal-band" aria-labelledby="seal-title">
+    <div class="wrap seal-grid">
+      <div>
+        <p class="kicker">Your seal</p>
+        <h2 id="seal-title">Your name, carved in Chinese.</h2>
+        <p class="section-lede">Chinese poets and painters signed their work with a carved seal. Ink &amp; Verse makes one for you. Type your name, and the app finds Chinese characters that sound like it and cuts them in ancient seal script.</p>
+        <ul class="seal-points">
+          <li>Tap any character to swap it for another with the same sound.</li>
+          <li>Choose a relief seal in red, or an intaglio seal cut white from the red with Pro.</li>
+          <li>Your seal is stamped on the poems you save and the images you share.</li>
+          <li>Already have a Chinese name? The seal uses it as it is.</li>
+        </ul>
+      </div>
+      <figure class="seal-stage" id="seal-stage">
+        <div class="seal-imgs">
+            <img src="assets/seal/emily.png" width="260" height="260" alt="Relief seal seal reading 艾米莉 for Emily" loading="lazy">
+            <img src="assets/seal/james.png" width="260" height="260" alt="Intaglio seal seal reading 詹姆斯 for James" loading="lazy" class="off">
+            <img src="assets/seal/olivia.png" width="260" height="260" alt="Relief seal seal reading 奥利维亚 for Olivia" loading="lazy" class="off">
+            <img src="assets/seal/lucas.png" width="260" height="260" alt="Intaglio seal seal reading 卢卡斯 for Lucas" loading="lazy" class="off">
+            <img src="assets/seal/grace.png" width="260" height="260" alt="Relief seal seal reading 格蕾丝 for Grace" loading="lazy" class="off">
+            <img src="assets/seal/sophia.png" width="260" height="260" alt="Intaglio seal seal reading 索菲娅 for Sophia" loading="lazy" class="off">
+        </div>
+        <figcaption class="seal-caption" aria-live="polite">
+          <span class="seal-en" id="seal-en">Emily</span>
+          <span class="seal-arrow" aria-hidden="true">&rarr;</span>
+          <span class="seal-zh" lang="zh-Hans" id="seal-zh">艾米莉</span>
+          <span class="seal-py" id="seal-py">ài mǐ lì</span>
+        </figcaption>
+        <div class="seal-chips" role="group" aria-label="Try a name">
+            <button type="button" class="seal-chip" aria-pressed="true" data-i="0">Emily</button>
+            <button type="button" class="seal-chip" aria-pressed="false" data-i="1">James</button>
+            <button type="button" class="seal-chip" aria-pressed="false" data-i="2">Olivia</button>
+            <button type="button" class="seal-chip" aria-pressed="false" data-i="3">Lucas</button>
+            <button type="button" class="seal-chip" aria-pressed="false" data-i="4">Grace</button>
+            <button type="button" class="seal-chip" aria-pressed="false" data-i="5">Sophia</button>
+        </div>
+      </figure>
     </div>
   </section>
 
@@ -1053,6 +1143,42 @@
     index = day % count;
     show(index, 0);
     if (reduce) setPaused(true);
+  })();
+
+  // Personal seal: step through a few sample names until the reader picks one.
+  (function () {
+    var stage = document.getElementById("seal-stage");
+    if (!stage) return;
+    var names = [["Emily", "艾米莉", "ài mǐ lì"], ["James", "詹姆斯", "zhān mǔ sī"], ["Olivia", "奥利维亚", "ào lì wéi yà"], ["Lucas", "卢卡斯", "lú kǎ sī"], ["Grace", "格蕾丝", "gé lěi sī"], ["Sophia", "索菲娅", "suǒ fēi yà"]];
+    var imgs = stage.querySelectorAll(".seal-imgs img");
+    var chips = stage.querySelectorAll(".seal-chip");
+    var en = document.getElementById("seal-en"), zh = document.getElementById("seal-zh"), py = document.getElementById("seal-py");
+    var index = 0, timer = null;
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function show(i) {
+      index = i;
+      Array.prototype.forEach.call(imgs, function (img, k) { img.classList.toggle("off", k !== i); });
+      Array.prototype.forEach.call(chips, function (c, k) { c.setAttribute("aria-pressed", k === i ? "true" : "false"); });
+      en.textContent = names[i][0]; zh.textContent = names[i][1]; py.textContent = names[i][2];
+    }
+
+    Array.prototype.forEach.call(chips, function (chip, k) {
+      chip.addEventListener("click", function () { clearInterval(timer); timer = null; show(k); });
+    });
+
+    if (!reduce && "IntersectionObserver" in window) {
+      new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && timer === null && !stage.dataset.picked) {
+          timer = setInterval(function () { show((index + 1) % names.length); }, 3200);
+        } else if (!entries[0].isIntersecting && timer !== null) {
+          clearInterval(timer); timer = null;
+        }
+      }, { threshold: 0.4 }).observe(stage);
+    }
+    stage.addEventListener("click", function (e) {
+      if (e.target.closest(".seal-chip")) stage.dataset.picked = "1";
+    });
   })();
 
   // Hero demo: cycle through the screen recordings inside the phone.
