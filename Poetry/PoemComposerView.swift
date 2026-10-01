@@ -20,7 +20,6 @@ struct PoemComposerView: View {
 
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
     @AppStorage(PoemScript.storageKey) private var scriptRawValue = PoemScript.simplified.rawValue
-    @AppStorage(PoemBackground.storageKey) private var backgroundRawValue = PoemBackground.defaultBackground.rawValue
     @AppStorage(PoemStructure.storageKey) private var structureRawValue = PoemStructure.jueju.rawValue
     @AppStorage(PoemMeter.storageKey) private var meterRawValue = PoemMeter.five.rawValue
     @AppStorage(SealStampStyle.storageKey) private var sealStyleRawValue = SealStampStyle.zhuwen.rawValue
@@ -33,10 +32,9 @@ struct PoemComposerView: View {
     @ObservedObject private var store = StoreManager.shared
     @StateObject private var locationProvider = PoemLocationProvider()
     @State private var stage: ComposeStage = .heart
-    @State private var selectedMood = PoetrySeed.moods[0]
-    @State private var moodLevel1: String? = nil
-    @State private var moodLevel2: String? = nil
-    @State private var moodLevel3: String? = nil
+    @State private var selectedMood = PoetrySeed.themeBatches[0][0]
+    @State private var selectedSetting = PoetrySeed.settings[0]
+    @State private var selectedFeeling = PoetrySeed.feelings[0]
     @State private var selectedImage = PoetrySeed.images[0]
     @State private var homeImages = PoetrySeed.images
     @State private var selectedLines: [String] = []
@@ -44,7 +42,6 @@ struct PoemComposerView: View {
     @State private var savedPoems = PoemArchiveStore.load()
     @State private var isRefreshingImages = false
     @State private var recentHomeImageTitles: [String] = PoetrySeed.images.map(\.title)
-    @State private var showsPaywall = false
     @State private var selectedPoemForPreview: SavedPoem?
     @State private var hasCompletedCurrentPoem = false
     @State private var currentSavedPoem: SavedPoem?
@@ -56,40 +53,60 @@ struct PoemComposerView: View {
         )
     }
 
+    /// Downstream image and verse matching expects a single mood value. Keep the
+    /// theme and feeling independent in the UI, then combine their semantic tags
+    /// here so both choices shape the rest of the composition flow.
+    private var compositionMood: MoodSeed {
+        MoodSeed(
+            id: selectedFeeling.lineFamily,
+            title: "\(selectedMood.title) · \(selectedFeeling.title)",
+            englishTitle: "\(selectedMood.englishTitle ?? selectedMood.title) · \(selectedFeeling.englishTitle)",
+            tags: selectedMood.tags + selectedFeeling.tags
+        )
+    }
+
     private var hasPremiumAccess: Bool {
         store.isPremium
     }
 
+    private var completedPoemBackground: PoemBackground {
+        suggestedBackground(for: selectedLines)
+    }
+
+    private var stageBackgroundOverride: PoemBackground? {
+        guard case .finish = stage else { return nil }
+        return completedPoemBackground
+    }
+
     var body: some View {
         ZStack {
-            PaperBackground()
+            PaperBackground(backgroundOverride: stageBackgroundOverride)
 
             switch stage {
             case .heart:
                 HeartQuestionView(
-                    level1: $moodLevel1,
-                    level2: $moodLevel2,
-                    level3: $moodLevel3,
+                    selectedTheme: $selectedMood,
+                    selectedSetting: $selectedSetting,
+                    selectedFeeling: $selectedFeeling,
                     structureRawValue: $structureRawValue,
                     meterRawValue: $meterRawValue,
                     onNext: {
-                        selectedMood = MoodSeed(tags: [moodLevel1, moodLevel2, moodLevel3].compactMap { $0 })
-                        let fallback = PoetrySeed.images(for: selectedMood)
+                        let mood = compositionMood
+                        let fallback = PoetrySeed.images(for: mood, setting: selectedSetting)
                         homeImages = []
                         isRefreshingImages = true
                         stage = .image
-                        loadHomeImages(for: selectedMood, fallback: fallback)
+                        loadHomeImages(for: mood, fallback: fallback)
                     }
                 )
             case .image:
                 ImagePickingView(
-                    mood: selectedMood,
+                    mood: compositionMood,
+                    setting: selectedSetting,
                     images: homeImages,
                     selectedImage: $selectedImage,
-                    structureRawValue: $structureRawValue,
-                    meterRawValue: $meterRawValue,
                     onNext: {
-                        startPoemIfAllowed()
+                        startPoem()
                     },
                     onBack: {
                         isRefreshingImages = false
@@ -100,7 +117,8 @@ struct PoemComposerView: View {
                 )
             case .line:
                 LinePickingView(
-                    mood: selectedMood,
+                    mood: compositionMood,
+                    setting: selectedSetting,
                     image: selectedImage,
                     poemForm: poemForm,
                     lineIndex: currentLineIndex,
@@ -111,12 +129,13 @@ struct PoemComposerView: View {
                 )
             case .finish:
                 FinishedPoemView(
-                    mood: selectedMood,
+                    mood: compositionMood,
                     image: selectedImage,
                     lines: selectedLines,
+                    background: completedPoemBackground,
                     onReviseLine: { index, text in
                         // Editing only rewrites the text in place; it never
-                        // returns to AI line picking.
+                        // returns to the line-picking step.
                         guard selectedLines.indices.contains(index) else { return }
                         // The finished poem was auto-saved; drop it so the
                         // revised version replaces it instead of duplicating.
@@ -136,6 +155,15 @@ struct PoemComposerView: View {
                         // The composer resets itself when this tab becomes active again.
                         onOpenArchive()
                         requestReviewAfterFirstPoemIfNeeded()
+                    },
+                    onDelete: {
+                        // Finished poems are saved during their reveal so they
+                        // survive an interrupted transition. Deleting here
+                        // explicitly discards that temporary saved copy.
+                        if let currentSavedPoem {
+                            savedPoems = PoemArchiveStore.delete(currentSavedPoem)
+                        }
+                        restartPoem()
                     }
                 )
             }
@@ -143,19 +171,14 @@ struct PoemComposerView: View {
             if stage == .heart {
                 ArchiveEntryButton(count: savedPoems.count)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.trailing, 24)
-                .padding(.top, 76)
+                .padding(.trailing, 22)
+                .padding(.top, 20)
             }
         }
         .foregroundStyle(Color.ink)
         .environment(\.poemTypeface, PoemTypeface(rawValue: typefaceRawValue) ?? .kaiti)
         .environment(\.poemScript, PoemScript(rawValue: scriptRawValue) ?? .simplified)
         .environmentObject(locationProvider)
-        .sheet(isPresented: $showsPaywall) {
-            PaywallView {
-                showsPaywall = false
-            }
-        }
         .fullScreenCover(item: $selectedPoemForPreview) { poem in
             PoemSharePreviewView(
                 imageTitle: poem.imageTitle,
@@ -208,12 +231,7 @@ struct PoemComposerView: View {
         }
     }
 
-    private func startPoemIfAllowed() {
-        guard PremiumAccess.consumePoemIfNeeded(hasPremiumAccess: hasPremiumAccess) else {
-            showsPaywall = true
-            return
-        }
-
+    private func startPoem() {
         selectedLines.removeAll()
         currentLineIndex = 0
         stage = .line
@@ -255,14 +273,14 @@ struct PoemComposerView: View {
         let place = locationProvider.inscriptionPlace ?? locationProvider.cityName
         let poem = SavedPoem(
             createdAt: Date(),
-            moodTitle: selectedMood.title,
+            moodTitle: compositionMood.title,
             imageTitle: selectedImage.title,
             lines: lines,
             locationText: place.map { compactInscriptionText("於\($0)") },
             lunarDateText: inscriptionDate.lunarDateText,
             dayPeriodText: inscriptionDate.dayPeriodText,
             typefaceRawValue: typefaceRawValue,
-            backgroundRawValue: backgroundRawValue,
+            backgroundRawValue: suggestedBackground(for: lines).rawValue,
             usesVerticalText: usesVerticalText,
             sealName: sealName,
             scriptRawValue: scriptRawValue,
@@ -276,10 +294,19 @@ struct PoemComposerView: View {
         hasCompletedCurrentPoem = true
     }
 
+    /// The chosen theme and image are part of the poem's intent, so include
+    /// them alongside the final lines when selecting its paper. Suggestions
+    /// deliberately include member papers; access is checked only when sharing.
+    private func suggestedBackground(for lines: [String]) -> PoemBackground {
+        let semanticText = ([compositionMood.title, selectedSetting.title, selectedImage.title] + lines)
+            .joined(separator: " ")
+        return PoemBackground.suggested(for: semanticText)
+    }
+
     private func restartPoem() {
-        moodLevel1 = nil
-        moodLevel2 = nil
-        moodLevel3 = nil
+        selectedMood = PoetrySeed.themeBatches[0][0]
+        selectedSetting = PoetrySeed.settings[0]
+        selectedFeeling = PoetrySeed.feelings[0]
         selectedLines.removeAll()
         currentLineIndex = 0
         homeImages = PoetrySeed.images
@@ -300,38 +327,20 @@ struct PoemComposerView: View {
     }
 
     private func refreshHomeImages() {
-        loadHomeImages(for: selectedMood, fallback: PoetrySeed.rotatingImages(excluding: recentHomeImageTitles))
+        loadHomeImages(
+            for: compositionMood,
+            fallback: PoetrySeed.images(for: compositionMood, setting: selectedSetting)
+        )
     }
 
     private func loadHomeImages(for mood: MoodSeed, fallback: [ImageSeed]) {
         if isRefreshingImages && !homeImages.isEmpty { return }
         isRefreshingImages = true
-
-        Task {
-            let images: [ImageSeed]
-            do {
-                images = try await BailianPoetryClient().generateImageSeeds(
-                    mood: mood,
-                    fallback: fallback,
-                    excluding: recentHomeImageTitles,
-                    script: PoemScript(rawValue: scriptRawValue) ?? .simplified
-                )
-            } catch {
-                images = fallback
-            }
-
-            await MainActor.run {
-                guard selectedMood == mood else {
-                    isRefreshingImages = false
-                    return
-                }
-                let freshImages = PoetrySeed.nonRepeatingImages(images, excluding: recentHomeImageTitles)
-                homeImages = freshImages
-                rememberHomeImages(freshImages)
-                selectedImage = freshImages.first ?? PoetrySeed.images[0]
-                isRefreshingImages = false
-            }
-        }
+        let freshImages = PoetrySeed.nonRepeatingImages(fallback, excluding: recentHomeImageTitles)
+        homeImages = freshImages
+        rememberHomeImages(freshImages)
+        selectedImage = freshImages.first ?? PoetrySeed.images[0]
+        isRefreshingImages = false
     }
 
     private func rememberHomeImages(_ images: [ImageSeed]) {
@@ -597,560 +606,504 @@ private struct PoemFormMenu: View {
         )
     }
 
+    private let options = [
+        PoemFormSpec(structure: .jueju, meter: .five),
+        PoemFormSpec(structure: .jueju, meter: .seven),
+        PoemFormSpec(structure: .lushi, meter: .five),
+        PoemFormSpec(structure: .lushi, meter: .seven)
+    ]
+
     var body: some View {
-        Menu {
-            Picker(AppLanguage.copy("每句字數", "Characters per line").poemScript(script), selection: $meterRawValue) {
-                ForEach(PoemMeter.allCases) { meter in
-                    Text(meter.displayName.poemScript(script)).tag(meter.rawValue)
-                }
-            }
-            Picker(AppLanguage.copy("詩體", "Poem structure").poemScript(script), selection: $structureRawValue) {
-                ForEach(PoemStructure.allCases) { structure in
-                    Text(structure.displayName.poemScript(script)).tag(structure.rawValue)
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(AppLanguage.copy("詩體", "Poem form").poemScript(script))
-                    .foregroundStyle(Color.mutedInk)
-                Spacer(minLength: 8)
+                    .font(typeface.font(size: 16))
+                    .foregroundStyle(Color.ink)
+
+                Spacer(minLength: 12)
+
                 Text(form.displayName.poemScript(script))
-                Text(AppLanguage.copy("每句\(form.characterCount)字 · 共\(form.lineCount)句", "\(form.lineCount) lines · \(form.characterCount) characters each").poemScript(script))
-                    .font(typeface.tinySealFont)
-                    .foregroundStyle(Color.mutedInk)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(AppLanguage.isEnglish ? .system(size: 11, weight: .medium) : typeface.font(size: 12))
+                    .foregroundStyle(Color.cinnabar)
+                    .lineLimit(1)
             }
-            .font(typeface.smallFont)
-            .foregroundStyle(Color.cinnabar)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 6
+            ) {
+                ForEach(options) { option in
+                    formOption(option)
+                }
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.56))
+                .strokeBorder(Color.ink.opacity(0.07), lineWidth: 0.8)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(AppLanguage.copy("詩體選項", "Poem form choices").poemScript(script))
+    }
+
+    private func formOption(_ option: PoemFormSpec) -> some View {
+        let isSelected = option == form
+
+        return Button {
+            meterRawValue = option.meter.rawValue
+            structureRawValue = option.structure.rawValue
+            SensoryFeedback.lightTap()
+        } label: {
+            VStack(spacing: 2) {
+                Text(option.displayName.poemScript(script))
+                    .font(AppLanguage.isEnglish ? .system(size: 11, weight: .semibold, design: .serif) : typeface.font(size: 14))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(
+                    AppLanguage.copy(
+                        "\(option.characterCount)字 × \(option.lineCount)句",
+                        "\(option.characterCount) × \(option.lineCount)"
+                    ).poemScript(script)
+                )
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .opacity(isSelected ? 0.82 : 0.58)
+            }
+            .foregroundStyle(isSelected ? .white : Color.ink)
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.cinnabar : Color.white.opacity(0.72))
+                    .strokeBorder(
+                        isSelected ? Color.cinnabar.opacity(0.52) : Color.ink.opacity(0.08),
+                        lineWidth: isSelected ? 1.1 : 0.8
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(AppLanguage.copy("設定詩體", "Choose poem form").poemScript(script))
-        .accessibilityValue(form.displayName.poemScript(script))
-        .accessibilityHint(AppLanguage.copy("選擇五言或七言、絕句或律詩", "Choose characters per line and poem structure").poemScript(script))
+        .accessibilityLabel(option.displayName.poemScript(script))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 private struct HeartQuestionView: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
-    @Binding var level1: String?
-    @Binding var level2: String?
-    @Binding var level3: String?
+    @Binding var selectedTheme: MoodSeed
+    @Binding var selectedSetting: SettingSeed
+    @Binding var selectedFeeling: FeelingSeed
     @Binding var structureRawValue: String
     @Binding var meterRawValue: String
     let onNext: () -> Void
     var onBack: (() -> Void)? = nil
 
-    @State private var level2Options: [String] = []
-    @State private var level3Options: [String] = []
-    @State private var isLoadingL2 = false
-    @State private var isLoadingL3 = false
-
-    private var currentLevel: Int {
-        if level1 == nil { return 1 }
-        if level2 == nil { return 2 }
-        if level3 == nil { return 3 }
-        return 4
+    private var form: PoemFormSpec {
+        PoemFormSpec(
+            structure: PoemStructure(rawValue: structureRawValue) ?? .jueju,
+            meter: PoemMeter(rawValue: meterRawValue) ?? .five
+        )
     }
 
-    private var canProceed: Bool { currentLevel == 4 }
-
-    private var l2Display: [String] {
-        level2Options.isEmpty ? MoodLevels.level2(for: level1 ?? "") : level2Options
-    }
-
-    private var l3Display: [String] {
-        level3Options.isEmpty ? MoodLevels.level3(for: level1 ?? "", level2 ?? "") : level3Options
+    private var selectionSummary: String {
+        if AppLanguage.isEnglish {
+            return "\(selectedTheme.englishTitle ?? selectedTheme.title) · \(selectedSetting.englishTitle) · \(selectedFeeling.englishTitle)"
+        }
+        return "\(selectedTheme.title) · \(selectedSetting.title) · \(selectedFeeling.title)".poemScript(script)
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { proxy in
+            // This is the complete first step, rather than a feed. Keeping it in
+            // the viewport prevents an accidental vertical drag from hiding the
+            // primary action on shorter phones.
+            let isCompactHeight = proxy.size.height < 760
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(AppLanguage.copy("今日心中", "What is on your mind today?").poemScript(script))
-                            .font(typeface.titleFont)
-                        Text(AppLanguage.copy("有什麼放不下", "Choose Chinese prompts to compose a classical Chinese poem.").poemScript(script))
-                            .font(typeface.bodyFont)
-                            .tracking(AppLanguage.isEnglish ? 0 : 3)
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(AppLanguage.copy("成诗", "Compose").poemScript(script))
+                            .font(typeface.font(size: 29))
+                            .foregroundStyle(Color.ink)
+                        Text(AppLanguage.copy("择一题，定一境，观一心", "Choose a theme, setting, and feeling").poemScript(script))
+                            .font(AppLanguage.isEnglish ? .system(size: 12, design: .serif) : typeface.font(size: 12))
+                            .foregroundStyle(Color.mutedInk)
                     }
                     Spacer()
                     if let onBack {
                         QuietBackButton(title: AppLanguage.copy("返回", "Back"), action: onBack)
                     }
                 }
-                .padding(.top, 72)
-                .padding(.leading, 30)
-                .padding(.trailing, 24)
+                .frame(minHeight: 48)
+                .padding(.horizontal, 22)
+                .padding(.top, isCompactHeight ? 12 : 20)
+
+                HStack(spacing: 8) {
+                    Text(AppLanguage.copy("已选", "Selected").poemScript(script))
+                        .font(typeface.font(size: 12))
+                        .foregroundStyle(Color.cinnabar)
+
+                    Text(selectionSummary)
+                        .font(typeface.font(size: 13))
+                        .foregroundStyle(Color.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Spacer(minLength: 8)
+
+                    Text(form.displayName.poemScript(script))
+                        .font(typeface.font(size: 11))
+                        .foregroundStyle(Color.mutedInk)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, isCompactHeight ? 6 : 10)
 
                 PoemFormMenu(structureRawValue: $structureRawValue, meterRawValue: $meterRawValue)
-                    .padding(.horizontal, 30)
-                    .padding(.top, 16)
-                    .padding(.bottom, 18)
+                    .padding(.horizontal, 22)
+                    .padding(.top, isCompactHeight ? 8 : 10)
 
-                VStack(alignment: .leading, spacing: 18) {
-                    MoodLevelRow(
-                        label: AppLanguage.copy("先择一情", "Start with a feeling"),
-                        options: MoodLevels.level1,
-                        selected: level1,
-                        isCurrent: currentLevel == 1,
-                        isLoading: false,
-                        maxCharacters: 1,
-                        onRefresh: nil,
-                        onSelect: { pick in
-                            if level1 == pick {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    level1 = nil; level2 = nil; level3 = nil
-                                    level2Options = []; level3Options = []
-                                    isLoadingL2 = false; isLoadingL3 = false
-                                }
-                                return
-                            }
+                ThemePickerSection(
+                    selectedTheme: $selectedTheme,
+                    selectedSetting: $selectedSetting,
+                    selectedFeeling: $selectedFeeling,
+                    usesCompactSpacing: isCompactHeight
+                )
+                    .padding(.horizontal, 22)
+                    .padding(.top, isCompactHeight ? 10 : 14)
 
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                level1 = pick; level2 = nil; level3 = nil
-                                level2Options = []; level3Options = []
-                            }
-                            loadLevel2(for: pick)
-                        }
-                    )
+                Spacer(minLength: isCompactHeight ? 8 : 16)
 
-                    if level1 != nil {
-                        MoodLevelRow(
-                            label: AppLanguage.isEnglish ? "Choose a moment" : MoodLevels.level2Label(for: level1 ?? ""),
-                            options: l2Display,
-                            selected: level2,
-                            isCurrent: currentLevel == 2,
-                            isLoading: isLoadingL2 && level2Options.isEmpty,
-                            maxCharacters: 4,
-                            onRefresh: { loadLevel2(for: level1 ?? "", forceLocalRotation: true) },
-                            onSelect: { pick in
-                                if level2 == pick {
-                                    withAnimation(.easeOut(duration: 0.3)) {
-                                        level2 = nil; level3 = nil
-                                        level3Options = []
-                                        isLoadingL3 = false
-                                    }
-                                    return
-                                }
-
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    level2 = pick; level3 = nil
-                                    level3Options = []
-                                }
-                                loadLevel3(for: level1 ?? "", pick)
-                            }
-                        )
-                        .transition(.opacity.combined(with: .offset(y: 10)))
-                    }
-
-                    if level2 != nil {
-                        MoodLevelRow(
-                            label: AppLanguage.copy("身在何處", "Choose a setting"),
-                            options: l3Display,
-                            selected: level3,
-                            isCurrent: currentLevel == 3,
-                            isLoading: isLoadingL3 && level3Options.isEmpty,
-                            maxCharacters: 4,
-                            onRefresh: { loadLevel3(for: level1 ?? "", level2 ?? "", forceLocalRotation: true) },
-                            onSelect: { pick in
-                                if level3 == pick {
-                                    withAnimation(.easeOut(duration: 0.3)) {
-                                        level3 = nil
-                                    }
-                                    return
-                                }
-
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    level3 = pick
-                                }
-                            }
-                        )
-                        .transition(.opacity.combined(with: .offset(y: 10)))
-                    }
-                }
-                .padding(.horizontal, 30)
-                .animation(.easeOut(duration: 0.35), value: currentLevel)
-
-                Spacer(minLength: 16)
-
-                if canProceed {
-                    SealTextButton(title: AppLanguage.copy("撰", "Compose"), action: onNext)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 30)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
+                SealTextButton(title: AppLanguage.copy("撰", "Compose"), action: onNext)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, isCompactHeight ? 12 : 24)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-            .clipped()
-            .contentShape(Rectangle())
-            .onTapGesture {
-                dismissKeyboard()
-            }
+            .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .top)
         }
-        .animation(.easeOut(duration: 0.35), value: canProceed)
         .spotlightOverlay(for: [.selectMood])
     }
-
-    private func loadLevel2(for l1: String, forceLocalRotation: Bool = false) {
-        if forceLocalRotation {
-            withAnimation(.easeOut(duration: 0.25)) {
-                level2Options = MoodLevels.rotatingLevel2(for: l1)
-            }
-            return
-        }
-
-        isLoadingL2 = true
-        Task {
-            do {
-                let options = try await BailianPoetryClient().generateMoodOptions(
-                        level: 2, l1: l1, l2: nil,
-                        fallback: MoodLevels.level2(for: l1),
-                        maxCharacters: 4,
-                        script: PoemScript(rawValue: UserDefaults.standard.string(forKey: PoemScript.storageKey) ?? "") ?? .simplified
-                )
-                await MainActor.run {
-                    guard level1 == l1 else { return }
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        level2Options = mergeMoodOptions(options, fallback: level2Options.isEmpty ? MoodLevels.level2(for: l1) : level2Options, maxCharacters: 4)
-                        isLoadingL2 = false
-                    }
-                }
-            } catch {
-                await MainActor.run { isLoadingL2 = false }
-            }
-        }
-    }
-
-    private func loadLevel3(for l1: String, _ l2: String, forceLocalRotation: Bool = false) {
-        if forceLocalRotation {
-            withAnimation(.easeOut(duration: 0.25)) {
-                level3Options = MoodLevels.rotatingLevel3(for: l1, l2)
-            }
-            return
-        }
-
-        isLoadingL3 = true
-        Task {
-            do {
-                let options = try await BailianPoetryClient().generateMoodOptions(
-                        level: 3, l1: l1, l2: l2,
-                        fallback: MoodLevels.level3(for: l1, l2),
-                        maxCharacters: 4,
-                        script: PoemScript(rawValue: UserDefaults.standard.string(forKey: PoemScript.storageKey) ?? "") ?? .simplified
-                )
-                await MainActor.run {
-                    guard level1 == l1 && level2 == l2 else { return }
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        level3Options = mergeMoodOptions(options, fallback: level3Options.isEmpty ? MoodLevels.level3(for: l1, l2) : level3Options, maxCharacters: 4)
-                        isLoadingL3 = false
-                    }
-                }
-            } catch {
-                await MainActor.run { isLoadingL3 = false }
-            }
-        }
-    }
-
-    private func mergeMoodOptions(_ generated: [String], fallback: [String], maxCharacters: Int) -> [String] {
-        var result: [String] = []
-        for option in generated + fallback {
-            let normalized = normalizedMoodOption(option, maxCharacters: maxCharacters)
-            if !normalized.isEmpty && !result.contains(normalized) {
-                result.append(normalized)
-            }
-        }
-        return Array(result.prefix(8))
-    }
-
-    private func normalizedMoodOption(_ value: String, maxCharacters: Int) -> String {
-        let visibleCharacters = value.filter { character in
-            !character.isWhitespace && !character.isNewline
-        }
-        return String(visibleCharacters.prefix(maxCharacters))
-    }
-
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    }
 }
 
-/// A single level row: label + options. Completed levels show selected option highlighted;
-/// tapping a different option in a completed level re-selects it (and resets levels below).
-private struct MoodLevelRow: View {
+private struct SettingOptionButton: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
-    let label: String
-    let options: [String]
-    let selected: String?
-    let isCurrent: Bool
-    let isLoading: Bool
-    let maxCharacters: Int
-    let onRefresh: (() -> Void)?
-    var onBeginCustomEdit: (() -> Void)? = nil
-    let onSelect: (String) -> Void
-    @State private var isAddingCustomOption = false
-    @State private var customOption = ""
-    @State private var showsLimitHint = false
-    @FocusState private var customFocused: Bool
-
-    private var displayedOptions: [String] {
-        guard let selected, !options.contains(selected) else { return options }
-        return options + [selected]
-    }
-
-    private var optionDiameter: CGFloat {
-        maxCharacters > 1 ? 62 : 56
-    }
-
-    private var customPrompt: String {
-        maxCharacters == 1
-            ? AppLanguage.copy("一字", "One Chinese character")
-            : AppLanguage.copy("四字", "Up to four Chinese characters")
-    }
-
-    private var limitHint: String {
-        maxCharacters == 1
-            ? AppLanguage.copy("最多一字", "Use one Chinese character")
-            : AppLanguage.copy("最多四字", "Use up to four Chinese characters")
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Text(label.poemScript(script))
-                    .font(typeface.smallFont)
-                    .foregroundStyle(Color.mutedInk)
-
-                Spacer()
-
-                if let onRefresh {
-                    Button(AppLanguage.copy("換", "Refresh").poemScript(script)) {
-                        onRefresh()
-                    }
-                    .font(AppLanguage.isEnglish ? .system(size: 12, weight: .medium) : typeface.tinySealFont)
-                    .foregroundStyle(Color.cinnabar)
-                    .buttonStyle(.plain)
-                }
-            }
-
-            if showsLimitHint {
-                Text(limitHint.poemScript(script))
-                    .font(typeface.tinySealFont)
-                    .foregroundStyle(Color.cinnabar.opacity(0.78))
-                    .transition(.opacity.combined(with: .offset(y: -3)))
-            }
-
-            if isLoading {
-                MoodLoadingIndicator(text: AppLanguage.copy("取意中", "Finding ideas"))
-                    .padding(.top, 4)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: optionDiameter), spacing: 12)], alignment: .leading, spacing: 10) {
-                    ForEach(displayedOptions, id: \.self) { option in
-                        MoodOptionButton(
-                            title: option,
-                            isSelected: selected == option,
-                            dimmed: !isCurrent && selected != option
-                        ) {
-                            onSelect(option)
-                        }
-                    }
-
-                    if isCurrent {
-                        customOptionControl
-                    }
-                }
-            }
-        }
-        .opacity(isCurrent ? 1 : 0.85)
-    }
-
-    @ViewBuilder
-    private var customOptionControl: some View {
-        if isAddingCustomOption {
-            TextField("", text: $customOption, prompt: Text(customPrompt.poemScript(script)).foregroundStyle(Color.mutedInk.opacity(0.45)))
-                .font(typeface.tinySealFont)
-                .foregroundStyle(Color.ink)
-                .focused($customFocused)
-                .multilineTextAlignment(.center)
-                .frame(width: optionDiameter, height: optionDiameter)
-                .background {
-                    Circle()
-                        .stroke(Color.cinnabar.opacity(0.75), lineWidth: 1)
-                }
-                .submitLabel(.done)
-                .onSubmit(commitCustomOption)
-                .onChange(of: customFocused) { oldValue, newValue in
-                    if oldValue && !newValue {
-                        commitCustomOption()
-                    }
-                }
-                .onChange(of: customOption) { _, newValue in
-                    if visibleCharacterCount(newValue) > maxCharacters {
-                        showLimitHint()
-                    }
-                    let normalized = normalizedCustomOption(newValue)
-                    if normalized != newValue {
-                        customOption = normalized
-                    }
-                }
-        } else {
-            Button {
-                isAddingCustomOption = true
-                onBeginCustomEdit?()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    customFocused = true
-                }
-            } label: {
-                Text("+")
-                    .font(typeface.smallFont)
-                    .foregroundStyle(Color.cinnabar)
-                    .frame(width: optionDiameter, height: optionDiameter)
-                    .background {
-                        Circle()
-                            .stroke(Color.cinnabar.opacity(0.75), lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func commitCustomOption() {
-        let option = normalizedCustomOption(customOption)
-        guard !option.isEmpty else {
-            customOption = ""
-            isAddingCustomOption = false
-            customFocused = false
-            return
-        }
-        customOption = option
-        onSelect(option)
-        customOption = ""
-        isAddingCustomOption = false
-        customFocused = false
-    }
-
-    private func normalizedCustomOption(_ value: String) -> String {
-        let visibleCharacters = value.filter { character in
-            !character.isWhitespace && !character.isNewline
-        }
-        return String(visibleCharacters.prefix(maxCharacters))
-    }
-
-    private func visibleCharacterCount(_ value: String) -> Int {
-        value.filter { character in
-            !character.isWhitespace && !character.isNewline
-        }.count
-    }
-
-    private func showLimitHint() {
-        withAnimation(.easeOut(duration: 0.18)) {
-            showsLimitHint = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) {
-            withAnimation(.easeOut(duration: 0.2)) {
-                showsLimitHint = false
-            }
-        }
-    }
-}
-
-private struct MoodLoadingIndicator: View {
-    @Environment(\.poemTypeface) private var typeface
-    @Environment(\.poemScript) private var script
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Color.cinnabar)
-
-            Text("\(text)…".poemScript(script))
-                .font(typeface.smallFont)
-                .foregroundStyle(Color.cinnabar)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 42)
-        .background {
-            Capsule()
-                .fill(Color.white.opacity(0.72))
-                .stroke(Color.cinnabar.opacity(0.24), lineWidth: 0.8)
-        }
-        .shadow(color: Color.cinnabar.opacity(0.08), radius: 10, x: 0, y: 5)
-        .accessibilityLabel(Text(text.poemScript(script)))
-    }
-}
-
-private struct MoodOptionButton: View {
-    @Environment(\.poemTypeface) private var typeface
-    @Environment(\.poemScript) private var script
-    @Environment(\.spotlightGuide) private var spotlightGuide
-    let title: String
-    var isSelected: Bool = false
-    var dimmed: Bool = false
+    let setting: SettingSeed
+    let isSelected: Bool
     let action: () -> Void
 
     private var displayTitle: String {
-        guard AppLanguage.isEnglish else { return title.poemScript(script) }
-        switch title {
-        case "喜": return "Joy"
-        case "怒": return "Anger"
-        case "哀": return "Sorrow"
-        case "乐": return "Ease"
-        default: return title.poemScript(script)
+        guard AppLanguage.isEnglish else { return setting.title.poemScript(script) }
+        return setting.englishTitle
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(displayTitle)
+                .font(AppLanguage.isEnglish ? .system(size: 11, weight: .medium, design: .serif) : typeface.font(size: 13))
+                .foregroundStyle(isSelected ? .white : Color.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .background {
+                    Capsule()
+                        .fill(isSelected ? Color.cinnabar : Color.white.opacity(0.72))
+                        .stroke(isSelected ? Color.cinnabar : Color.mutedInk.opacity(0.12), lineWidth: 0.8)
+                }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Capsule())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct ThemePickerSection: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var selectedTheme: MoodSeed
+    @Binding var selectedSetting: SettingSeed
+    @Binding var selectedFeeling: FeelingSeed
+    let usesCompactSpacing: Bool
+    @State private var themeBatchIndex = 0
+    @State private var settingBatchIndex = 0
+    @State private var feelingBatchIndex = 0
+
+    // Each picker exposes a complete 2 × 3 grid before cycling to the next batch.
+    private let themeBatchSize = 6
+    private let settingBatchSize = 6
+    private let feelingBatchSize = 6
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    }
+
+    private var themes: [MoodSeed] {
+        batchItems(from: allThemes, size: themeBatchSize, batchIndex: themeBatchIndex)
+    }
+
+    private var settings: [SettingSeed] {
+        batchItems(from: PoetrySeed.settings, size: settingBatchSize, batchIndex: settingBatchIndex)
+    }
+
+    private var feelings: [FeelingSeed] {
+        batchItems(from: PoetrySeed.feelings, size: feelingBatchSize, batchIndex: feelingBatchIndex)
+    }
+
+    private var allThemes: [MoodSeed] {
+        PoetrySeed.themeBatches.flatMap { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: usesCompactSpacing ? 8 : 14) {
+            VStack(alignment: .leading, spacing: usesCompactSpacing ? 4 : 6) {
+                optionHeader(
+                    AppLanguage.copy("主题", "Theme"),
+                    accessibilityLabel: AppLanguage.copy("换一批主题", "Show more themes"),
+                    action: showNextThemeBatch
+                )
+                LazyVGrid(columns: columns, alignment: .leading, spacing: usesCompactSpacing ? 6 : 8) {
+                    ForEach(Array(themes.enumerated()), id: \.element.id) { index, theme in
+                        ThemeOptionButton(
+                            theme: theme,
+                            isSelected: selectedTheme.id == theme.id,
+                            isSpotlightTarget: index == 0
+                        ) {
+                            selectedTheme = theme
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: usesCompactSpacing ? 4 : 6) {
+                optionHeader(
+                    AppLanguage.copy("地点", "Setting"),
+                    accessibilityLabel: AppLanguage.copy("换一批地点", "Show more settings"),
+                    action: showNextSettingBatch
+                )
+                LazyVGrid(columns: columns, alignment: .leading, spacing: usesCompactSpacing ? 6 : 8) {
+                    ForEach(settings) { setting in
+                        SettingOptionButton(
+                            setting: setting,
+                            isSelected: selectedSetting.id == setting.id
+                        ) {
+                            selectedSetting = setting
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: usesCompactSpacing ? 4 : 6) {
+                optionHeader(
+                    AppLanguage.copy("心境", "Feeling"),
+                    accessibilityLabel: AppLanguage.copy("换一批心境", "Show more feelings"),
+                    action: showNextFeelingBatch
+                )
+                LazyVGrid(columns: columns, alignment: .leading, spacing: usesCompactSpacing ? 6 : 8) {
+                    ForEach(feelings) { feeling in
+                        FeelingOptionButton(
+                            feeling: feeling,
+                            isSelected: selectedFeeling.id == feeling.id
+                        ) {
+                            selectedFeeling = feeling
+                        }
+                    }
+                }
+            }
+        }
+        .padding(usesCompactSpacing ? 10 : 12)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.46))
+                .strokeBorder(Color.ink.opacity(0.07), lineWidth: 0.8)
+        }
+        .onAppear {
+            if let matchingIndex = allThemes.firstIndex(where: { $0.id == selectedTheme.id }) {
+                themeBatchIndex = matchingIndex / themeBatchSize
+            }
+            if let matchingIndex = PoetrySeed.settings.firstIndex(where: { $0.id == selectedSetting.id }) {
+                settingBatchIndex = matchingIndex / settingBatchSize
+            }
+            if let matchingIndex = PoetrySeed.feelings.firstIndex(where: { $0.id == selectedFeeling.id }) {
+                feelingBatchIndex = matchingIndex / feelingBatchSize
+            }
         }
     }
 
-    private var diameter: CGFloat {
-        if AppLanguage.isEnglish && displayTitle.unicodeScalars.allSatisfy({ !CharacterSet.cjk.contains($0) }) {
-            return 72
+    private func optionHeader(_ title: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(title.poemScript(script))
+                .font(typeface.font(size: 17))
+                .foregroundStyle(Color.ink)
+
+            Spacer()
+
+            BatchRefreshButton(accessibilityLabel: accessibilityLabel, action: action)
         }
-        return title.count > 2 ? 62 : 56
     }
 
-    private var optionFont: Font {
-        if AppLanguage.isEnglish && displayTitle.unicodeScalars.allSatisfy({ !CharacterSet.cjk.contains($0) }) {
-            return .system(size: 12, weight: .semibold, design: .serif)
-        }
-        if title.count > 2 {
-            return typeface.tinySealFont
-        }
-        return typeface.sealFont
+    private func batchItems<Item>(from items: [Item], size: Int, batchIndex: Int) -> [Item] {
+        guard !items.isEmpty else { return [] }
+        let start = (batchIndex * size) % items.count
+        return (0..<min(size, items.count)).map { items[(start + $0) % items.count] }
     }
 
-    private var isSpotlightTarget: Bool {
-        spotlightGuide.step == .selectMood && title == "喜"
+    private func showNextThemeBatch() {
+        updateBatch {
+            themeBatchIndex = nextBatchIndex(
+                current: themeBatchIndex,
+                itemCount: allThemes.count,
+                batchSize: themeBatchSize
+            )
+            if let firstTheme = themes.first {
+                selectedTheme = firstTheme
+            }
+        }
+    }
+
+    private func showNextSettingBatch() {
+        updateBatch {
+            settingBatchIndex = nextBatchIndex(
+                current: settingBatchIndex,
+                itemCount: PoetrySeed.settings.count,
+                batchSize: settingBatchSize
+            )
+            if let firstSetting = settings.first {
+                selectedSetting = firstSetting
+            }
+        }
+    }
+
+    private func showNextFeelingBatch() {
+        updateBatch {
+            feelingBatchIndex = nextBatchIndex(
+                current: feelingBatchIndex,
+                itemCount: PoetrySeed.feelings.count,
+                batchSize: feelingBatchSize
+            )
+            if let firstFeeling = feelings.first {
+                selectedFeeling = firstFeeling
+            }
+        }
+    }
+
+    private func nextBatchIndex(current: Int, itemCount: Int, batchSize: Int) -> Int {
+        let count = max(1, (itemCount + batchSize - 1) / batchSize)
+        return (current + 1) % count
+    }
+
+    private func updateBatch(_ update: @escaping () -> Void) {
+        if reduceMotion {
+            update()
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                update()
+            }
+        }
+    }
+}
+
+private struct BatchRefreshButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            SensoryFeedback.lightTap()
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(AppLanguage.copy("换一批", "More").poemScript(script))
+                    .font(AppLanguage.isEnglish ? .system(size: 10, weight: .medium) : typeface.font(size: 10))
+            }
+            .foregroundStyle(Color.cinnabar)
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(.white.opacity(0.72), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.cinnabar.opacity(0.32), lineWidth: 0.8)
+            }
+            .frame(minHeight: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel.poemScript(script))
+    }
+}
+
+private struct FeelingOptionButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    let feeling: FeelingSeed
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var displayTitle: String {
+        AppLanguage.isEnglish ? feeling.englishTitle : feeling.title.poemScript(script)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(displayTitle)
+                .font(AppLanguage.isEnglish ? .system(size: 11, weight: .medium, design: .serif) : typeface.font(size: 13))
+                .foregroundStyle(isSelected ? .white : Color.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .background {
+                    Capsule()
+                        .fill(isSelected ? Color.cinnabar : Color.white.opacity(0.72))
+                        .stroke(isSelected ? Color.cinnabar : Color.mutedInk.opacity(0.12), lineWidth: 0.8)
+                }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Capsule())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct ThemeOptionButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    @Environment(\.poemScript) private var script
+    @Environment(\.spotlightGuide) private var spotlightGuide
+    let theme: MoodSeed
+    let isSelected: Bool
+    let isSpotlightTarget: Bool
+    let action: () -> Void
+
+    private var displayTitle: String {
+        guard AppLanguage.isEnglish else { return theme.title.poemScript(script) }
+        return theme.englishTitle ?? theme.title.poemScript(script)
     }
 
     var body: some View {
         Button {
             action()
-            if isSpotlightTarget {
+            if spotlightGuide.step == .selectMood && isSpotlightTarget {
                 spotlightGuide.advance()
             }
         } label: {
             Text(displayTitle)
-                .font(optionFont)
+                .font(AppLanguage.isEnglish ? .system(size: 11, weight: .medium, design: .serif) : typeface.font(size: 13))
                 .foregroundStyle(isSelected ? .white : Color.ink)
-                .lineLimit(2)
-                .minimumScaleFactor(0.68)
-                .multilineTextAlignment(.center)
-                .frame(width: diameter, height: diameter)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, minHeight: 38)
                 .background {
-                    Circle()
-                        .fill(isSelected ? Color.cinnabar : Color.white.opacity(0.5))
-                        .stroke(isSelected ? Color.cinnabar : Color.mutedInk.opacity(0.35), lineWidth: 0.8)
+                    Capsule()
+                        .fill(isSelected ? Color.cinnabar : Color.white.opacity(0.72))
+                        .stroke(isSelected ? Color.cinnabar : Color.mutedInk.opacity(0.12), lineWidth: 0.8)
                 }
         }
         .buttonStyle(.plain)
-        .frame(width: diameter, height: diameter)
-        .opacity(dimmed ? 0.3 : 1)
-        .spotlightTarget(.selectMood, active: isSpotlightTarget)
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+        .contentShape(Capsule())
+        .spotlightTarget(.selectMood, active: spotlightGuide.step == .selectMood && isSpotlightTarget)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -1159,10 +1112,9 @@ private struct ImagePickingView: View {
     @Environment(\.poemScript) private var script
     @Environment(\.spotlightGuide) private var spotlightGuide
     let mood: MoodSeed
+    let setting: SettingSeed
     let images: [ImageSeed]
     @Binding var selectedImage: ImageSeed
-    @Binding var structureRawValue: String
-    @Binding var meterRawValue: String
     let onNext: () -> Void
     let onBack: () -> Void
     let onRefresh: () -> Void
@@ -1172,18 +1124,31 @@ private struct ImagePickingView: View {
         GeometryReader { proxy in
             let size = proxy.size
             ZStack {
-                QuietBackButton(title: AppLanguage.copy("返回", "Back"), action: onBack)
-                    .position(x: size.width * 0.91, y: size.height * 0.09)
+                VStack(spacing: 0) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(AppLanguage.copy("擇題成詩", "Choose a title").poemScript(script))
+                                .font(typeface.font(size: 22))
+                                .foregroundStyle(Color.ink)
+                            Text(
+                                AppLanguage.isEnglish
+                                    ? "\(mood.englishTitle ?? mood.title) · \(setting.englishTitle) · choose a title"
+                                    : "\(mood.title) · \(setting.title) · 從下方選一題".poemScript(script)
+                            )
+                            .font(typeface.smallFont)
+                            .foregroundStyle(Color.mutedInk)
+                            .lineLimit(2)
+                        }
+                        Spacer()
+                        QuietBackButton(title: AppLanguage.copy("返回", "Back"), action: onBack)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 52)
+                    .padding(.bottom, 18)
 
-                PoemFormMenu(structureRawValue: $structureRawValue, meterRawValue: $meterRawValue)
-                    .frame(width: max(0, size.width - 60))
-                    .position(x: size.width * 0.50, y: size.height * 0.20)
-
-                Text(AppLanguage.copy("待選題目", "Choose an image").poemScript(script))
-                    .font(typeface.smallFont)
-                    .tracking(4)
-                    .foregroundStyle(Color.cinnabar)
-                    .position(x: size.width * 0.50, y: size.height * 0.32)
+                    Spacer()
+                }
+                .frame(width: size.width, height: size.height, alignment: .top)
 
                 // Center: image choices
                 ZStack {
@@ -1218,7 +1183,7 @@ private struct ImagePickingView: View {
                 }
                 .animation(.easeOut(duration: 0.5), value: images.isEmpty)
                 .animation(.easeOut(duration: 0.35), value: images)
-                .position(x: size.width * 0.50, y: size.height * 0.48)
+                .position(x: size.width * 0.50, y: size.height * 0.43)
 
                 // Below choices: refresh and go share the same baseline.
                 HStack(spacing: 28) {
@@ -1230,7 +1195,7 @@ private struct ImagePickingView: View {
                         .opacity(images.isEmpty ? 0.35 : 1)
                         .allowsHitTesting(!images.isEmpty)
                 }
-                .position(x: size.width * 0.50, y: size.height * 0.68)
+                .position(x: size.width * 0.50, y: size.height * 0.64)
 
             }
             .frame(width: size.width, height: size.height)
@@ -1310,8 +1275,9 @@ private struct LinePickingView: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     @Environment(\.spotlightGuide) private var spotlightGuide
-    private let usesVerticalText = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let mood: MoodSeed
+    let setting: SettingSeed
     let image: ImageSeed
     let poemForm: PoemFormSpec
     let lineIndex: Int
@@ -1321,35 +1287,62 @@ private struct LinePickingView: View {
     let onBackLine: () -> Void
     @State private var choicesVisible = false
     @State private var pickedLine: String?
-    @State private var sealPulse = false
-    @State private var candidateLines: [String] = []
-    @State private var isLoadingCandidates = false
-    @State private var requestID = UUID()
     @State private var cancelPendingPick = false
     @State private var refreshSeed = 0
     @State private var showSelfWrite = false
     @State private var selfWriteText = ""
 
-    private var fallbackOptions: [String] {
-        PoetrySeed.lines(for: mood, image: image, form: poemForm, index: lineIndex + refreshSeed).map { $0.poemScript(script) }
+    private var options: [String] {
+        PoetrySeed.lines(
+            for: mood,
+            image: image,
+            form: poemForm,
+            index: lineIndex,
+            selectedLines: selectedLines,
+            refreshSeed: refreshSeed
+        )
+        .map { $0.poemScript(script) }
     }
 
-    private var options: [String] {
-        candidateLines.isEmpty ? fallbackOptions : candidateLines
+    private var stepName: String {
+        if poemForm.structure == .jueju {
+            return ["起", "承", "轉", "合"][min(lineIndex, 3)]
+        }
+        switch lineIndex {
+        case 0: return "起"
+        case 1: return "承"
+        case 2, 3: return "頷聯"
+        case 4, 5: return "頸聯"
+        default: return "合"
+        }
+    }
+
+    private var artworkName: String {
+        let context = "\(mood.title)\(setting.title)\(image.id)\(image.title)"
+        if context.contains("雨") { return "bg_rain" }
+        if context.contains("雪") || context.contains("寒") { return "bg_snow" }
+        if context.contains("月") || context.contains("夜") || context.contains("燈") { return "bg_moon" }
+        if context.contains("舟") || context.contains("渡") || context.contains("水") { return "bg_boat" }
+        if context.contains("竹") || context.contains("茶") { return "bg_bamboo" }
+        if context.contains("橋") || context.contains("巷") || context.contains("城") { return "bg_bridge" }
+        if context.contains("春") || context.contains("花") { return "bg_spring" }
+        return "bg_peaks"
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let size = proxy.size
             VStack(spacing: 0) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLanguage.copy("AI寫詩", "Compose").poemScript(script))
-                            .font(typeface.titleFont)
+                        Text(AppLanguage.copy("擇句成詩", "Compose a poem").poemScript(script))
+                            .font(typeface.font(size: 22))
                             .foregroundStyle(Color.ink)
-                        Text(AppLanguage.isEnglish ? "Original Chinese · \(poemForm.lineCount) lines" : "\(mood.title) · \(poemForm.displayName)".poemScript(script))
+                        Text(AppLanguage.isEnglish
+                            ? "\(setting.englishTitle) · \(poemForm.displayName) · choose one line at a time"
+                            : "\(mood.title) · \(setting.title) · \(image.title) · \(poemForm.displayName)".poemScript(script))
                             .font(typeface.smallFont)
                             .foregroundStyle(Color.mutedInk)
+                            .lineLimit(2)
                     }
                     Spacer()
                     QuietBackButton(title: "返回") {
@@ -1359,93 +1352,137 @@ private struct LinePickingView: View {
                     .opacity(pickedLine == nil ? 1 : 0.35)
                     .disabled(pickedLine != nil)
                 }
-                .padding(.top, 54)
+                .padding(.horizontal, 24)
+                .padding(.top, 52)
+                .padding(.bottom, 18)
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    let fontSize: CGFloat = poemForm.lineCount > 4 ? 16 : 21
-                    let columnSpacing: CGFloat = poemForm.lineCount > 4 ? 8 : 16
-                    VerticalPoemComposition(columnSpacing: columnSpacing, minimumGap: 12) {
-                        VerticalText(
-                            AppLanguage.isEnglish ? "\(lineIndex + 1)/\(poemForm.lineCount)" : "第\(lineIndex + 1)句".poemScript(script),
-                            font: typeface.tinySealFont,
-                            color: .cinnabar,
-                            spacing: 3
-                        )
-                    } verses: {
-                        ForEach(Array((0..<poemForm.lineCount).reversed()), id: \.self) { index in
-                            if index < selectedLines.count {
-                                ComposedPoemLine(line: selectedLines[index], fontSize: fontSize)
-                                    .transition(.opacity.combined(with: .offset(y: 12)))
-                            } else {
-                                Color.clear
-                                    .frame(width: fontSize, height: CGFloat(poemForm.characterCount) * (fontSize + 5))
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                    } title: {
-                        VerticalText(image.title, font: typeface.font(size: 16), color: .mutedInk, spacing: 6)
-                    }
-                    .frame(minHeight: max(180, min(280, size.height * 0.34)))
-                    .padding(.top, 28)
-                    .padding(.bottom, 20)
-                }
-                .animation(.easeOut(duration: 0.4), value: selectedLines)
+                    VStack(alignment: .leading, spacing: 22) {
+                        ZStack {
+                            Image(artworkName)
+                                .resizable()
+                                .scaledToFill()
+                                .opacity(0.2)
+                                .accessibilityHidden(true)
 
-                Rectangle()
-                    .fill(Color.mutedInk.opacity(0.18))
-                    .frame(height: 0.7)
-
-                HStack {
-                    Text(AppLanguage.copy("選一句入詩", "Choose a line for your poem").poemScript(script))
-                        .font(typeface.smallFont)
-                        .foregroundStyle(Color.mutedInk)
-                    Spacer()
-                    SmallCircleButton(title: "換", action: refreshCandidates)
-                        .disabled(pickedLine != nil || isLoadingCandidates)
-                    SmallCircleButton(title: "書") {
-                        selfWriteText = ""
-                        showSelfWrite = true
-                    }
-                    .disabled(pickedLine != nil)
-                }
-                .padding(.top, 12)
-
-                let candidateLayout = usesVerticalText
-                    ? AnyLayout(HStackLayout(alignment: .top, spacing: 18))
-                    : AnyLayout(VStackLayout(spacing: 8))
-                candidateLayout {
-                    if isLoadingCandidates && candidateLines.isEmpty {
-                        Text(AppLanguage.copy("取句中…", "Finding lines…").poemScript(script))
-                            .font(typeface.smallFont)
-                            .foregroundStyle(Color.mutedInk)
-                            .frame(maxWidth: .infinity, minHeight: 154)
-                    } else {
-                        let guidedIndex = options.count > 1 ? 1 : 0
-                        ForEach(Array(options.enumerated()), id: \.offset) { index, line in
-                            let isSpotlightTarget = spotlightGuide.step == .selectLine && index == guidedIndex
-                            LineChoiceButton(
-                                line: line,
-                                isPicked: pickedLine == line,
-                                choicesVisible: choicesVisible,
-                                sealPulse: sealPulse,
-                                isSpotlightTarget: isSpotlightTarget,
-                                action: {
-                                    if isSpotlightTarget { spotlightGuide.advance() }
-                                    choose(line)
-                                }
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.84), Color.white.opacity(0.36), Color.white.opacity(0.74)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
+
+                            VStack(spacing: 18) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(image.title.poemScript(script))
+                                        .font(typeface.accentFont)
+                                        .foregroundStyle(Color.ink)
+                                    Spacer()
+                                    Text("\(lineIndex + 1) / \(poemForm.lineCount)")
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .monospacedDigit()
+                                        .foregroundStyle(Color.cinnabar)
+                                }
+
+                                HStack(alignment: .top, spacing: poemForm.lineCount > 4 ? 8 : 15) {
+                                    ForEach(Array((0..<poemForm.lineCount).reversed()), id: \.self) { index in
+                                        if index < selectedLines.count {
+                                            ComposedPoemLine(
+                                                line: selectedLines[index],
+                                                fontSize: poemForm.lineCount > 4 ? 16 : 20
+                                            )
+                                            .transition(.opacity.combined(with: .offset(y: 8)))
+                                        } else {
+                                            VersePlaceholderColumn(
+                                                characterCount: poemForm.characterCount,
+                                                isCurrent: index == lineIndex
+                                            )
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, minHeight: poemForm.characterCount == 7 ? 150 : 118)
+
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(Color.cinnabar)
+                                        .frame(width: 5, height: 5)
+                                    Text(poemForm.role(for: lineIndex).poemScript(script))
+                                        .font(typeface.tinySealFont)
+                                        .foregroundStyle(Color.mutedInk)
+                                        .lineLimit(2)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .padding(20)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: poemForm.characterCount == 7 ? 286 : 254)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .strokeBorder(Color.ink.opacity(0.08), lineWidth: 0.8)
+                        }
+                        .shadow(color: Color.ink.opacity(0.07), radius: 14, x: 0, y: 7)
+                        .animation(.easeOut(duration: 0.3), value: selectedLines)
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text((AppLanguage.isEnglish
+                                    ? "Line \(lineIndex + 1)"
+                                    : "第\(lineIndex + 1)句 · \(stepName)").poemScript(script))
+                                    .font(typeface.accentFont)
+                                    .foregroundStyle(Color.ink)
+                                Spacer()
+                                Text(AppLanguage.copy("選一句入詩", "Choose one line").poemScript(script))
+                                    .font(typeface.tinySealFont)
+                                    .foregroundStyle(Color.mutedInk)
+                            }
+
+                            VStack(spacing: 10) {
+                                let guidedIndex = options.count > 1 ? 1 : 0
+                                ForEach(Array(options.enumerated()), id: \.offset) { index, line in
+                                    let isSpotlightTarget = spotlightGuide.step == .selectLine && index == guidedIndex
+                                    CandidateLineRow(
+                                        line: line,
+                                        isPicked: pickedLine == line,
+                                        isVisible: choicesVisible || pickedLine == line,
+                                        isSpotlightTarget: isSpotlightTarget
+                                    ) {
+                                        if isSpotlightTarget { spotlightGuide.advance() }
+                                        choose(line)
+                                    }
+                                }
+                            }
+
+                            HStack(spacing: 12) {
+                                ComposerActionButton(
+                                    title: AppLanguage.copy("換一批", "More lines").poemScript(script),
+                                    systemName: "arrow.triangle.2.circlepath",
+                                    action: refreshCandidates
+                                )
+                                .disabled(pickedLine != nil)
+
+                                ComposerActionButton(
+                                    title: AppLanguage.copy("自己寫", "Write my own").poemScript(script),
+                                    systemName: "pencil.line"
+                                ) {
+                                    selfWriteText = ""
+                                    showSelfWrite = true
+                                }
+                                .disabled(pickedLine != nil)
+                            }
+                            .padding(.top, 2)
                         }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, max(28, proxy.safeAreaInsets.bottom + 16))
                 }
-                .padding(.top, 10)
-                .padding(.bottom, 22)
             }
-            .padding(.horizontal, 28)
-            .frame(width: size.width, height: size.height)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .task(id: lineIndex) {
-            resetCandidates()
-            await loadCandidates(requestID: requestID)
+        .onAppear(perform: revealChoices)
+        .onChange(of: lineIndex) {
+            refreshSeed = 0
+            revealChoices()
         }
         .sheet(isPresented: $showSelfWrite) {
             SelfWriteSheet(
@@ -1460,51 +1497,24 @@ private struct LinePickingView: View {
         .spotlightOverlay(for: [.selectLine])
     }
 
-    private func resetCandidates() {
-        requestID = UUID()
+    private func revealChoices() {
         choicesVisible = false
         pickedLine = nil
-        sealPulse = false
         cancelPendingPick = false
-        candidateLines = []
-        isLoadingCandidates = true
-    }
-
-    private func loadCandidates(requestID currentRequestID: UUID) async {
-        let generated: [String]
-        do {
-            generated = try await BailianPoetryClient().generateCandidates(
-                mood: mood,
-                image: image,
-                lineIndex: lineIndex,
-                selectedLines: selectedLines,
-                fallback: fallbackOptions,
-                poemForm: poemForm,
-                script: script
-            )
-        } catch {
-            generated = fallbackOptions
-        }
-
-        guard currentRequestID == requestID else { return }
-
-        candidateLines = generated.isEmpty ? fallbackOptions : generated
-#if DEBUG
-        print("Poetry candidates line \(lineIndex + 1): \(candidateLines)")
-#endif
-        isLoadingCandidates = false
-        withAnimation(.easeOut(duration: 0.9).delay(0.12)) {
+        if reduceMotion {
             choicesVisible = true
+        } else {
+            withAnimation(.easeOut(duration: 0.45).delay(0.08)) {
+                choicesVisible = true
+            }
         }
     }
 
     private func refreshCandidates() {
-        guard pickedLine == nil, !isLoadingCandidates else { return }
+        guard pickedLine == nil else { return }
         SensoryFeedback.lightTap()
-        refreshSeed += 1
-        resetCandidates()
-        Task {
-            await loadCandidates(requestID: requestID)
+        withAnimation(.easeOut(duration: 0.22)) {
+            refreshSeed += 1
         }
     }
 
@@ -1514,45 +1524,103 @@ private struct LinePickingView: View {
         pickedLine = line
         choicesVisible = false
         SensoryFeedback.lightTap()
-        prefetchNextCandidates(afterChoosing: line)
 
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.42)) {
-            sealPulse = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
-                sealPulse = false
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.05 : 0.42)) {
             guard !cancelPendingPick else { return }
-            withAnimation(.easeInOut(duration: 0.45)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 onPick(line)
             }
         }
     }
+}
 
-    private func prefetchNextCandidates(afterChoosing line: String) {
-        let nextLineIndex = lineIndex + 1
-        guard nextLineIndex < poemForm.lineCount else { return }
+private struct VersePlaceholderColumn: View {
+    let characterCount: Int
+    let isCurrent: Bool
 
-        let nextSelectedLines = selectedLines + [line]
-        let nextFallback = PoetrySeed.lines(for: mood, image: image, form: poemForm, index: nextLineIndex)
-            .map { $0.poemScript(script) }
-
-        Task {
-            _ = try? await BailianPoetryClient().generateCandidates(
-                mood: mood,
-                image: image,
-                lineIndex: nextLineIndex,
-                selectedLines: nextSelectedLines,
-                fallback: nextFallback,
-                poemForm: poemForm,
-                script: script
-            )
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<characterCount, id: \.self) { _ in
+                Circle()
+                    .fill(isCurrent ? Color.cinnabar.opacity(0.34) : Color.mutedInk.opacity(0.14))
+                    .frame(width: 3.5, height: 3.5)
+            }
         }
+        .frame(width: 20)
+        .padding(.top, 5)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct CandidateLineRow: View {
+    @Environment(\.poemTypeface) private var typeface
+    let line: String
+    let isPicked: Bool
+    let isVisible: Bool
+    let isSpotlightTarget: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(isPicked ? Color.cinnabar : Color.mutedInk.opacity(0.35))
+                Text(line)
+                    .font(typeface.bodyFont)
+                    .tracking(1.5)
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .padding(.horizontal, 14)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isPicked ? Color.cinnabar.opacity(0.1) : Color.white.opacity(0.68))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                isPicked ? Color.cinnabar.opacity(0.72) : Color.ink.opacity(0.08),
+                                lineWidth: isPicked ? 1.2 : 0.8
+                            )
+                    }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isPicked)
+        .opacity(isVisible ? 1 : 0)
+        .offset(y: isVisible ? 0 : 8)
+        .spotlightTarget(.selectLine, active: isSpotlightTarget && isVisible, offset: CGSize(width: 0, height: 4))
+        .accessibilityLabel(line)
+        .accessibilityAddTraits(isPicked ? .isSelected : [])
+    }
+}
+
+private struct ComposerActionButton: View {
+    @Environment(\.poemTypeface) private var typeface
+    let title: String
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemName)
+                .font(typeface.smallFont)
+                .foregroundStyle(Color.ink)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background {
+                    Capsule()
+                        .fill(Color.white.opacity(0.58))
+                        .overlay {
+                            Capsule().strokeBorder(Color.ink.opacity(0.1), lineWidth: 0.8)
+                        }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1715,50 +1783,6 @@ private struct BlinkingCaret: View {
     }
 }
 
-private struct LineChoiceButton: View {
-    private let usesVerticalText = true
-    @Environment(\.poemTypeface) private var typeface
-    let line: String
-    let isPicked: Bool
-    let choicesVisible: Bool
-    let sealPulse: Bool
-    var isSpotlightTarget: Bool = false
-    let action: () -> Void
-
-    private var isVisible: Bool {
-        choicesVisible || isPicked
-    }
-
-    var body: some View {
-        Button(action: action) {
-            ComposedPoemLine(line: line, fontSize: 21, color: isPicked ? .white : .ink)
-                .foregroundStyle(isPicked ? Color.white : Color.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: usesVerticalText ? nil : .infinity, minHeight: 43, alignment: .leading)
-                .padding(.horizontal, 18)
-                .background {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isPicked ? Color.cinnabar : Color.white.opacity(0.46))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Color.mutedInk.opacity(isPicked ? 0 : 0.16), lineWidth: 0.8)
-                        }
-                }
-                .opacity(isVisible ? (isPicked ? 1 : 0.86) : 0)
-                .offset(y: choicesVisible || isPicked ? 0 : 16)
-                .blur(radius: isVisible ? 0 : 2)
-                .scaleEffect(sealPulse ? 1.04 : 1)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isPicked)
-        .spotlightTarget(.selectLine, active: isSpotlightTarget && isVisible, offset: CGSize(width: 0, height: 4))
-        .animation(.easeOut(duration: 0.75), value: choicesVisible)
-        .animation(.spring(response: 0.25, dampingFraction: 0.55), value: isPicked)
-    }
-}
-
 private struct TypewriterLine: View {
     private let usesVerticalText = true
     @Environment(\.poemTypeface) private var typeface
@@ -1841,14 +1865,15 @@ private struct FinishedPoemView: View {
     @EnvironmentObject private var locationProvider: PoemLocationProvider
     @AppStorage(SealStampView.storageKey) private var sealName = ""
     @AppStorage(PoemTypeface.storageKey) private var typefaceRawValue = PoemTypeface.kaiti.rawValue
-    @AppStorage(PoemBackground.storageKey) private var backgroundRawValue = PoemBackground.defaultBackground.rawValue
     private let usesVerticalText = true
     let mood: MoodSeed
     let image: ImageSeed
     let lines: [String]
+    let background: PoemBackground
     let onReviseLine: (Int, String) -> Void
     let onSave: (SavedPoem) -> Void
     let onOpenArchive: () -> Void
+    let onDelete: () -> Void
     @State private var revealedChars = 0
     @State private var showSeal = false
     @State private var showActions = false
@@ -1856,6 +1881,7 @@ private struct FinishedPoemView: View {
     @State private var isSaved = false
     @State private var editingLine: EditingLine?
     @State private var editingText = ""
+    @State private var showsDeleteConfirmation = false
 
     private struct EditingLine: Identifiable {
         let index: Int
@@ -1941,7 +1967,7 @@ private struct FinishedPoemView: View {
                         .foregroundStyle(Color.mutedInk.opacity(0.72))
                 }
 
-                HStack(spacing: 30) {
+                HStack(spacing: 24) {
                     SealButton(
                         title: isRevisingPoem ? AppLanguage.copy("完成", "Done") : AppLanguage.copy("修改", "Edit"),
                         isSelected: !isRevisingPoem,
@@ -1951,6 +1977,11 @@ private struct FinishedPoemView: View {
                         title: AppLanguage.copy("保存", "Save"),
                         isSelected: true,
                         action: onOpenArchive
+                    )
+                    SealButton(
+                        title: AppLanguage.copy("删除", "Delete"),
+                        isSelected: false,
+                        action: { showsDeleteConfirmation = true }
                     )
                 }
             }
@@ -1981,6 +2012,17 @@ private struct FinishedPoemView: View {
                 }
                 editingLine = nil
             }
+        }
+        .alert(
+            AppLanguage.copy("确定删除此诗？", "Delete this poem?").poemScript(script),
+            isPresented: $showsDeleteConfirmation
+        ) {
+            Button(AppLanguage.copy("取消", "Cancel").poemScript(script), role: .cancel) {}
+            Button(AppLanguage.copy("删除", "Delete").poemScript(script), role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text(AppLanguage.copy("删除后将不会保存，且无法恢复。", "This poem will not be saved and cannot be recovered.").poemScript(script))
         }
     }
 
@@ -2051,7 +2093,7 @@ private struct FinishedPoemView: View {
             lunarDateText: inscriptionDate.lunarDateText,
             dayPeriodText: inscriptionDate.dayPeriodText,
             typefaceRawValue: typefaceRawValue,
-            backgroundRawValue: backgroundRawValue,
+            backgroundRawValue: background.rawValue,
             usesVerticalText: usesVerticalText,
             sealName: sealName,
             scriptRawValue: script.rawValue,
@@ -3013,7 +3055,7 @@ private struct ArchiveEntryButton: View {
     }
 }
 
-/// 藏詩: poems saved from AI寫詩, pushed onto the composer tab's navigation stack.
+/// 藏詩: poems saved from 擇句成詩, pushed onto the composer tab's navigation stack.
 struct PoemArchiveView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.poemTypeface) private var typeface
@@ -4113,23 +4155,31 @@ enum PoemTypeface: String, CaseIterable, Identifiable {
 struct MoodSeed: Identifiable, Equatable {
     let id: String
     let title: String
+    let englishTitle: String?
     let tags: [String]
 
-    init(id: String, title: String) {
+    init(id: String, title: String, englishTitle: String? = nil, tags: [String]? = nil) {
         self.id = id
         self.title = title
-        self.tags = [title]
+        self.englishTitle = englishTitle
+        self.tags = tags ?? [title]
     }
 
-    init(tags: [String]) {
-        let cleanTags = tags
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let title = cleanTags.isEmpty ? "未名" : cleanTags.joined(separator: "·")
-        self.id = cleanTags.isEmpty ? "custom-empty" : "tags-\(cleanTags.joined(separator: "-"))"
-        self.title = title
-        self.tags = cleanTags
-    }
+}
+
+struct SettingSeed: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let englishTitle: String
+    let images: [ImageSeed]
+}
+
+struct FeelingSeed: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let englishTitle: String
+    let tags: [String]
+    let lineFamily: String
 }
 
 struct ImageSeed: Identifiable, Equatable {
@@ -4141,12 +4191,158 @@ struct ImageSeed: Identifiable, Equatable {
 enum PoetrySeed {
     private static var rotatingIndex = 0
 
+    static let feelings: [FeelingSeed] = [
+        FeelingSeed(id: "feeling-serene", title: "安然", englishTitle: "Serene", tags: ["安", "放下"], lineFamily: "relief"),
+        FeelingSeed(id: "feeling-joyful", title: "欣然", englishTitle: "Joyful", tags: ["喜", "樂"], lineFamily: "default"),
+        FeelingSeed(id: "feeling-still", title: "澄静", englishTitle: "Still", tags: ["靜", "夜"], lineFamily: "quiet"),
+        FeelingSeed(id: "feeling-wistful", title: "惆怅", englishTitle: "Wistful", tags: ["哀", "離"], lineFamily: "part"),
+        FeelingSeed(id: "feeling-longing", title: "思念", englishTitle: "Longing", tags: ["相思", "別"], lineFamily: "part"),
+        FeelingSeed(id: "feeling-free", title: "洒脱", englishTitle: "Free", tags: ["放下", "釋"], lineFamily: "relief"),
+        FeelingSeed(id: "feeling-resolute", title: "激越", englishTitle: "Resolute", tags: ["不甘", "志向"], lineFamily: "resolve"),
+        FeelingSeed(id: "feeling-tender", title: "温柔", englishTitle: "Tender", tags: ["柔", "喜"], lineFamily: "default"),
+        FeelingSeed(id: "feeling-lonely", title: "孤寂", englishTitle: "Lonely", tags: ["孤", "夜"], lineFamily: "quiet")
+    ]
 
-    static let moods = [
-        MoodSeed(id: "miss", title: "思"),
-        MoodSeed(id: "part", title: "別"),
-        MoodSeed(id: "quiet", title: "寂"),
-        MoodSeed(id: "relief", title: "釋")
+    static let themeBatches: [[MoodSeed]] = [
+        [
+            MoodSeed(id: "theme-distance", title: "远方", englishTitle: "Afar", tags: ["遠", "離"]),
+            MoodSeed(id: "theme-longing", title: "相思", englishTitle: "Longing", tags: ["相思", "哀"]),
+            MoodSeed(id: "theme-autumn", title: "秋日", englishTitle: "Autumn", tags: ["秋", "孤"]),
+            MoodSeed(id: "theme-landscape", title: "山水", englishTitle: "Landscape", tags: ["山水", "放下"]),
+            MoodSeed(id: "theme-friendship", title: "友情", englishTitle: "Friendship", tags: ["友情", "喜"]),
+            MoodSeed(id: "theme-city", title: "城市", englishTitle: "City", tags: ["城市", "夜"]),
+            MoodSeed(id: "theme-festival", title: "节日", englishTitle: "Festival", tags: ["節日", "喜"]),
+            MoodSeed(id: "theme-life", title: "人生", englishTitle: "Life", tags: ["人生", "放下"]),
+            MoodSeed(id: "theme-nature", title: "自然", englishTitle: "Nature", tags: ["自然", "樂"]),
+            MoodSeed(id: "theme-homecoming", title: "归乡", englishTitle: "Home", tags: ["歸鄉", "離"])
+        ],
+        [
+            MoodSeed(id: "theme-spring", title: "春日", englishTitle: "Spring", tags: ["春", "喜"]),
+            MoodSeed(id: "theme-moonnight", title: "月夜", englishTitle: "Moon", tags: ["月", "夜"]),
+            MoodSeed(id: "theme-parting", title: "离别", englishTitle: "Parting", tags: ["離", "別"]),
+            MoodSeed(id: "theme-reunion", title: "重逢", englishTitle: "Reunion", tags: ["重逢", "喜"]),
+            MoodSeed(id: "theme-solitude", title: "独处", englishTitle: "Solitude", tags: ["孤", "夜"]),
+            MoodSeed(id: "theme-aspiration", title: "志向", englishTitle: "Resolve", tags: ["志向", "不甘"]),
+            MoodSeed(id: "theme-oldhome", title: "故园", englishTitle: "Homeland", tags: ["故鄉", "離"]),
+            MoodSeed(id: "theme-leisure", title: "闲居", englishTitle: "Leisure", tags: ["閒居", "放下"]),
+            MoodSeed(id: "theme-journey", title: "旅途", englishTitle: "Journey", tags: ["旅途", "樂"]),
+            MoodSeed(id: "theme-family", title: "家人", englishTitle: "Family", tags: ["家人", "喜"])
+        ],
+        [
+            MoodSeed(id: "theme-rain", title: "雨天", englishTitle: "Rain", tags: ["雨", "孤"]),
+            MoodSeed(id: "theme-olddream", title: "旧梦", englishTitle: "Dreams", tags: ["舊夢", "夜"]),
+            MoodSeed(id: "theme-rivers", title: "江湖", englishTitle: "Rivers", tags: ["江湖", "不甘"]),
+            MoodSeed(id: "theme-reflection", title: "感怀", englishTitle: "Reflection", tags: ["感懷", "孤"]),
+            MoodSeed(id: "theme-newyear", title: "新岁", englishTitle: "New Year", tags: ["新歲", "喜"]),
+            MoodSeed(id: "theme-confidant", title: "知己", englishTitle: "Kindred", tags: ["知己", "喜"]),
+            MoodSeed(id: "theme-release", title: "放下", englishTitle: "Release", tags: ["放下", "釋"]),
+            MoodSeed(id: "theme-retreat", title: "归隐", englishTitle: "Retreat", tags: ["歸隱", "放下"]),
+            MoodSeed(id: "theme-reunion-family", title: "团圆", englishTitle: "Together", tags: ["團圓", "喜"]),
+            MoodSeed(id: "theme-farewell", title: "送别", englishTitle: "Farewell", tags: ["送別", "離"])
+        ]
+    ]
+
+    static let settings: [SettingSeed] = [
+        SettingSeed(
+            id: "riverbank",
+            title: "江边",
+            englishTitle: "Riverside",
+            images: [
+                ImageSeed(id: "riverbank-moon", title: "江月无声", subtitle: ""),
+                ImageSeed(id: "riverbank-reeds", title: "芦花映水", subtitle: ""),
+                ImageSeed(id: "riverbank-tide", title: "潮声入夜", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "mountain",
+            title: "山中",
+            englishTitle: "Mountains",
+            images: [
+                ImageSeed(id: "mountain-pine", title: "松间月白", subtitle: ""),
+                ImageSeed(id: "mountain-rain", title: "山雨初歇", subtitle: ""),
+                ImageSeed(id: "mountain-cloud", title: "云出远岫", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "courtyard",
+            title: "庭院",
+            englishTitle: "Courtyard",
+            images: [
+                ImageSeed(id: "courtyard-moon", title: "月落空庭", subtitle: ""),
+                ImageSeed(id: "courtyard-flower", title: "海棠照影", subtitle: ""),
+                ImageSeed(id: "courtyard-step", title: "石阶微露", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "pavilion",
+            title: "长亭",
+            englishTitle: "Pavilion",
+            images: [
+                ImageSeed(id: "pavilion-grass", title: "长亭草色", subtitle: ""),
+                ImageSeed(id: "pavilion-willow", title: "柳岸风轻", subtitle: ""),
+                ImageSeed(id: "pavilion-sunset", title: "斜阳送客", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "window",
+            title: "窗前",
+            englishTitle: "Window",
+            images: [
+                ImageSeed(id: "window-curtain", title: "疏帘风动", subtitle: ""),
+                ImageSeed(id: "window-moon", title: "一窗新月", subtitle: ""),
+                ImageSeed(id: "window-rain", title: "檐雨未停", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "boat",
+            title: "舟上",
+            englishTitle: "Aboard",
+            images: [
+                ImageSeed(id: "boat-sail", title: "孤帆入暮", subtitle: ""),
+                ImageSeed(id: "boat-fire", title: "渔火隔江", subtitle: ""),
+                ImageSeed(id: "boat-sky", title: "水天一色", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "old-road",
+            title: "古道",
+            englishTitle: "Old Road",
+            images: [
+                ImageSeed(id: "old-road-wind", title: "古道西风", subtitle: ""),
+                ImageSeed(id: "old-road-dust", title: "驿尘初起", subtitle: ""),
+                ImageSeed(id: "old-road-sunset", title: "残阳照马", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "woods",
+            title: "林间",
+            englishTitle: "Woods",
+            images: [
+                ImageSeed(id: "woods-bamboo", title: "竹影扫阶", subtitle: ""),
+                ImageSeed(id: "woods-bird", title: "鸟鸣深树", subtitle: ""),
+                ImageSeed(id: "woods-pine", title: "松风满袖", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "lamplight",
+            title: "灯下",
+            englishTitle: "Lamplight",
+            images: [
+                ImageSeed(id: "lamplight-late", title: "残灯照夜", subtitle: ""),
+                ImageSeed(id: "lamplight-tea", title: "茶烟欲散", subtitle: ""),
+                ImageSeed(id: "lamplight-book", title: "书页微黄", subtitle: "")
+            ]
+        ),
+        SettingSeed(
+            id: "city",
+            title: "城中",
+            englishTitle: "City",
+            images: [
+                ImageSeed(id: "city-after-rain", title: "城雨初歇", subtitle: ""),
+                ImageSeed(id: "city-street", title: "长街灯晚", subtitle: ""),
+                ImageSeed(id: "city-tower", title: "高楼望月", subtitle: "")
+            ]
+        )
     ]
 
     static let images = [
@@ -4230,6 +4426,21 @@ enum PoetrySeed {
 
         let fallback = rotatingImages(excluding: recentTitles + filtered.map(\.title))
         return Array((filtered + fallback).prefix(3))
+    }
+
+    static func images(for mood: MoodSeed, setting: SettingSeed) -> [ImageSeed] {
+        let moodImages = images(for: mood)
+        let count = max(setting.images.count, moodImages.count)
+        var result: [ImageSeed] = []
+        for index in 0..<count {
+            if setting.images.indices.contains(index) {
+                result.append(setting.images[index])
+            }
+            if moodImages.indices.contains(index) {
+                result.append(moodImages[index])
+            }
+        }
+        return result
     }
 
     static func images(for mood: MoodSeed) -> [ImageSeed] {
@@ -4319,99 +4530,148 @@ enum PoetrySeed {
         return (0..<3).map { all[(seed + $0 * 5) % all.count] }
     }
 
-    static func lines(for mood: MoodSeed, image: ImageSeed, form: PoemFormSpec, index: Int) -> [String] {
+    static func lines(
+        for mood: MoodSeed,
+        image: ImageSeed,
+        form: PoemFormSpec,
+        index: Int,
+        selectedLines: [String] = [],
+        refreshSeed: Int = 0
+    ) -> [String] {
         let sevenDefault: [[String]] = [
-            ["临窗独坐明月光", "夜深忽忆去年时", "风过空庭花影迟"],
-            ["一纸相思未敢题", "故人消息隔天涯", "半生心事入寒窗"],
-            ["欲问平安终又止", "偏是无眠人易老", "忽忆当年花下语"],
-            ["只教明月替相思", "从此清风不寄谁", "不惊旧梦不惊枝"],
-            ["薄雾初开人未语", "小楼风定酒微温", "灯前旧字忽成灰"],
-            ["半窗花影随身瘦", "一径苔痕到梦深", "此心不肯付流云"],
-            ["回首人间多聚散", "欲将心事托寒星", "忽听归雁过前汀"],
-            ["明朝仍有好风来", "且把余情付晚钟", "一庭月色照归人"]
+            ["一夜春风入小楼", "新晴携客上高台", "灯暖归舟近故园", "春日归来花满衣"],
+            ["笑语隔帘盈绣栊", "满城花色为君开", "门前灯火照团圆", "小院新茶待客来"],
+            ["旧愿今朝随燕到", "新题小字上花笺", "一杯新酿待君尝", "笑把新诗写上笺"],
+            ["两袖清香带晚风", "一川春水映云开", "席间笑语暖心田", "一帘晴色到樽前"],
+            ["且向芳园寻好景", "闲看柳色过长堤", "窗前新月如眉好", "踏遍芳洲意未阑"],
+            ["故人相见意无穷", "清歌一曲入晴空", "今夕人间分外圆", "满座清欢夜未央"],
+            ["莫问归程迟与早", "便将欢意题红叶", "愿把家书重细看", "且将好景收心底"],
+            ["人间此刻正情浓", "携手同归花影中", "明朝仍共看春山", "来岁花时再并肩"]
+        ]
+
+        let sevenResolve: [[String]] = [
+            ["疾雨敲窗夜未休", "长街风紧压危楼", "寒灯照壁影如钩", "朔气横空动客愁"],
+            ["世事纷纷意未酬", "一纸难平旧日忧", "欲将心火问来由", "几番隐忍到今秋"],
+            ["不肯低眉随俗语", "且凭直气对横流", "偏教冷眼看沉浮", "不向人前说罢休"],
+            ["胸中尚有千层浪", "笔底还藏一寸秋", "此念从来不肯收", "一腔孤勇逆风舟"],
+            ["忍看浮云遮远目", "独持清醒立汀洲", "拂去尘埃再举头", "看尽炎凉志未酬"],
+            ["任他风雨过荒丘", "自有青山在上游", "且将孤愤付吴钩", "磨剑十年刃未钝"],
+            ["待到天明云自散", "回身已越最高丘", "莫令初心逐水流", "守得长空月一钩"],
+            ["此心无改更登楼", "明朝仗剑向神州", "一身正气度春秋", "从今昂首任行游"]
         ]
 
         let sevenParting: [[String]] = [
-            ["长亭草色又逢春", "渡口斜阳照别身", "春雨无声湿旧尘"],
-            ["一程山水一程人", "回首烟波不见君", "落花吹满去年门"],
-            ["欲把离愁藏袖底", "忽闻归雁过江津", "此后相逢应有期"],
-            ["愿君前路有晴云", "莫向天涯问旧痕", "各自人间各自春"],
-            ["远树含烟遮旧渡", "孤帆带雨入寒津", "客路逢春春更晚"],
-            ["江声不管离人意", "柳色偏牵昨日心", "一笛斜阳吹未尽"],
-            ["他年若问归来处", "应记今宵月满身", "别后山河各自深"],
-            ["愿从云外寄平安", "莫将清泪湿征衫", "天涯回首有春山"]
+            ["长亭草色又逢春", "渡口斜阳照别身", "春雨无声湿旧尘", "驿路风回草色新"],
+            ["一程山水一程人", "回首烟波不见君", "落花吹满去年门", "旧城灯火送行人"],
+            ["欲把离愁藏袖底", "忽闻归雁过江津", "此后相逢应有期", "临歧欲语还无语"],
+            ["愿君前路有晴云", "莫向天涯问旧痕", "各自人间各自春", "惟愿重逢在早春"],
+            ["远树含烟遮旧渡", "孤帆带雨入寒津", "客路逢春春更晚", "暮云低处见归帆"],
+            ["江声不管离人意", "柳色偏牵昨日心", "一笛斜阳吹未尽", "一夜江潮到客心"],
+            ["他年若问归来处", "应记今宵月满身", "别后山河各自深", "若得来年同看月"],
+            ["愿从云外寄平安", "莫将清泪湿征衫", "天涯回首有春山", "休教别泪损芳辰"]
         ]
 
         let sevenQuiet: [[String]] = [
-            ["孤灯照我到三更", "微雪无声落空庭", "旧城风起夜初沉"],
-            ["万籁归来心未平", "半窗月色冷如冰", "一盏清茶坐到明"],
-            ["不知梦去何方宿", "偶有钟声穿薄雾", "尘世喧哗隔一城"],
-            ["且听风声过短檐", "只留清影在衣襟", "明朝醒处是新晴"],
-            ["深巷无人灯自白", "残书有味夜偏长", "檐花滴破三更梦"],
-            ["一榻清寒容我坐", "半生尘事向谁明", "月在窗前人不语"],
-            ["忽有微风翻旧页", "暗香轻过小帘栊", "此身暂与夜同清"],
-            ["天明仍是寻常日", "且把孤心寄晓钟", "雪后空庭见月生"]
+            ["孤灯照我到三更", "微雪无声落空庭", "旧城风起夜初沉", "一帘疏雨近黄昏"],
+            ["万籁归来心未平", "半窗月色冷如冰", "一盏清茶坐到明", "石阶露冷月无痕"],
+            ["不知梦去何方宿", "偶有钟声穿薄雾", "尘世喧哗隔一城", "独倚小窗听叶落"],
+            ["且听风声过短檐", "只留清影在衣襟", "明朝醒处是新晴", "任由夜色满柴门"],
+            ["深巷无人灯自白", "残书有味夜偏长", "檐花滴破三更梦", "远寺钟声穿竹径"],
+            ["一榻清寒容我坐", "半生尘事向谁明", "月在窗前人不语", "茶烟一缕绕书痕"],
+            ["忽有微风翻旧页", "暗香轻过小帘栊", "此身暂与夜同清", "坐到星河低枕畔"],
+            ["天明仍是寻常日", "且把孤心寄晓钟", "雪后空庭见月生", "晓风吹白旧苔痕"]
         ]
 
         let sevenRelief: [[String]] = [
-            ["流云出岫不知愁", "春水无声自向东", "竹影扫阶尘渐空"],
-            ["旧事随风过小楼", "一身轻似晚来风", "心上青山月正中"],
-            ["回看人间多聚散", "从今不问归何处", "万般滋味入茶中"],
-            ["且把余生付远游", "花开花落两从容", "清风明月与人同"],
-            ["雨后青山如洗过", "闲云不系旧时愁", "小径无人花自落"],
-            ["一念放开天地阔", "半窗风月入怀清", "从此眉间少旧尘"],
-            ["人间得失皆流水", "杯底浮沉看晚晴", "回身已是万山轻"],
-            ["明日春风仍到门", "且留新梦在松阴", "心随白鹭过前溪"]
+            ["流云出岫不知愁", "春水无声自向东", "竹影扫阶尘渐空", "白鹭横江天欲晴"],
+            ["旧事随风过小楼", "一身轻似晚来风", "心上青山月正中", "往事回看已觉轻"],
+            ["回看人间多聚散", "从今不问归何处", "万般滋味入茶中", "不将得失留心上"],
+            ["且把余生付远游", "花开花落两从容", "清风明月与人同", "一任松风过此生"],
+            ["雨后青山如洗过", "闲云不系旧时愁", "小径无人花自落", "新荷出水香初动"],
+            ["一念放开天地阔", "半窗风月入怀清", "从此眉间少旧尘", "小坐溪边听鸟鸣"],
+            ["人间得失皆流水", "杯底浮沉看晚晴", "回身已是万山轻", "行到云开山尽处"],
+            ["明日春风仍到门", "且留新梦在松阴", "心随白鹭过前溪", "人随春色共徐行"]
         ]
 
         let fiveDefault: [[String]] = [
-            ["临窗看月", "夜深忆旧", "风过空庭"],
-            ["相思未题", "故人天涯", "心事寒窗"],
-            ["欲问还止", "无眠易老", "忽忆花前"],
-            ["明月替思", "清风不寄", "旧梦不惊"],
-            ["薄雾初开", "小楼风定", "灯前字冷"],
-            ["花影随身", "苔痕入梦", "心付流云"],
-            ["回首聚散", "心托寒星", "归雁过汀"],
-            ["好风仍来", "余情付钟", "月照归人"]
+            ["春风入小楼", "新晴上高台", "灯暖近家山", "归来花满衣"],
+            ["笑语盈帘栊", "花色为君开", "灯火照团圆", "新茶待客来"],
+            ["旧愿随燕到", "小字上花笺", "新酿待君尝", "新诗写上笺"],
+            ["两袖带清风", "春水映云开", "笑语暖心田", "晴色到樽前"],
+            ["芳园寻好景", "柳色过长堤", "新月照窗前", "芳洲意未阑"],
+            ["故友意无穷", "清歌入晴空", "今夕分外圆", "清欢夜未央"],
+            ["莫问归来晚", "欢情题红叶", "家书重细看", "好景收心底"],
+            ["此刻正情浓", "携手花影中", "明朝看春山", "花时再并肩"]
+        ]
+
+        let fiveResolve: [[String]] = [
+            ["疾雨夜未休", "长风压危楼", "寒灯影如钩", "朔气动客愁"],
+            ["世事意未酬", "一纸难平忧", "心火问来由", "隐忍到今秋"],
+            ["不肯随俗语", "直气对横流", "冷眼看沉浮", "不肯说罢休"],
+            ["胸中千层浪", "笔底一寸秋", "此念不肯收", "孤勇逆风舟"],
+            ["浮云遮远目", "清醒立汀洲", "拂尘再举头", "炎凉志未酬"],
+            ["风雨过荒丘", "青山在上游", "孤愤付吴钩", "磨剑刃未钝"],
+            ["天明云自散", "回身越高丘", "初心莫逐流", "长空月一钩"],
+            ["此心更登楼", "仗剑向神州", "正气度春秋", "昂首任行游"]
         ]
 
         let fiveParting: [[String]] = [
-            ["长亭又春", "渡口斜阳", "春雨湿尘"],
-            ["山水一程", "烟波无君", "落花满门"],
-            ["离愁藏袖", "归雁过津", "相逢有期"],
-            ["前路晴云", "天涯旧痕", "人间各春"],
-            ["远树含烟", "孤帆带雨", "客路春晚"],
-            ["江声不管", "柳色牵心", "斜阳笛尽"],
-            ["他年归处", "今宵月满", "山河各深"],
-            ["云外平安", "清泪勿湿", "回首春山"]
+            ["长亭又逢春", "渡口照斜阳", "春雨湿旧尘", "驿路草色新"],
+            ["山水又一程", "烟波不见君", "落花满旧门", "旧城送行人"],
+            ["离愁藏袖底", "归雁过江津", "相逢应有期", "临歧还无语"],
+            ["前路有晴云", "天涯问旧痕", "人间各有春", "重逢在早春"],
+            ["远树含春烟", "孤帆带夜雨", "客路春将晚", "暮云见归帆"],
+            ["江声不管愁", "柳色牵旧心", "斜阳笛未尽", "江潮到客心"],
+            ["他年问归处", "今宵月满身", "山河别后深", "来年同看月"],
+            ["云外寄平安", "清泪莫沾衫", "回首见春山", "别泪莫伤春"]
         ]
 
         let fiveQuiet: [[String]] = [
-            ["孤灯三更", "微雪空庭", "旧城夜沉"],
-            ["万籁心平", "月色如冰", "清茶到明"],
-            ["梦去何方", "钟声穿雾", "尘世隔城"],
-            ["风过短檐", "清影衣襟", "醒处新晴"],
-            ["深巷灯白", "残书夜长", "檐花破梦"],
-            ["清寒容坐", "尘事谁明", "月前不语"],
-            ["微风翻页", "暗香过帘", "此身同清"],
-            ["天明如常", "孤心寄钟", "雪后月生"]
+            ["孤灯到三更", "微雪落空庭", "旧城夜色沉", "疏雨近黄昏"],
+            ["万籁心未平", "月色冷如冰", "清茶坐到明", "露冷月无痕"],
+            ["梦去知何方", "钟声穿薄雾", "尘世隔孤城", "小窗听叶落"],
+            ["且听过檐风", "清影在衣襟", "醒处是新晴", "夜色满柴门"],
+            ["深巷孤灯白", "残书伴夜长", "檐花惊旧梦", "钟声穿竹径"],
+            ["清寒容我坐", "尘事向谁明", "月前人不语", "茶烟绕书痕"],
+            ["微风翻旧页", "暗香过小帘", "此身与夜清", "星河低枕畔"],
+            ["天明仍如常", "孤心寄晓钟", "雪后月初生", "晓风白苔痕"]
         ]
 
         let fiveRelief: [[String]] = [
-            ["流云出岫", "春水向东", "竹影扫尘"],
-            ["旧事随风", "身似晚风", "心有青山"],
-            ["回看聚散", "不问归处", "滋味入茶"],
-            ["余生远游", "花落从容", "明月同人"],
-            ["雨后青山", "闲云无愁", "小径花落"],
-            ["一念天地", "风月入怀", "眉间少尘"],
-            ["得失流水", "杯底晚晴", "回身山轻"],
-            ["春风到门", "新梦松阴", "心随白鹭"]
+            ["流云自出岫", "春水自向东", "竹影扫心尘", "白鹭天欲晴"],
+            ["旧事已随风", "此身似晚风", "心上有青山", "往事已觉轻"],
+            ["回看多聚散", "从今不问归", "滋味尽入茶", "得失不留心"],
+            ["余生付远游", "花落亦从容", "明月与人同", "松风过此生"],
+            ["雨后青山净", "闲云不系愁", "小径花自落", "新荷香初动"],
+            ["一念天地阔", "风月入我怀", "眉间少旧尘", "溪边听鸟鸣"],
+            ["得失皆流水", "杯底看晚晴", "回身万山轻", "云开山尽处"],
+            ["春风又到门", "新梦在松阴", "心随白鹭行", "春色共徐行"]
         ]
 
         let table: [[String]]
-        switch (mood.id, form.meter) {
+        let context = ([mood.id] + mood.tags + [image.id, image.title]).joined(separator: " ")
+        let family: String
+        if ["part", "resolve", "quiet", "relief", "default"].contains(mood.id) {
+            // A separately chosen feeling is an explicit creative direction and
+            // should take precedence when its tone conflicts with the theme.
+            family = mood.id
+        } else if context.contains("哀") || context.contains("別") || context.contains("离") || context.contains("遠") {
+            family = "part"
+        } else if context.contains("怒") || context.contains("不平") || context.contains("委屈") || context.contains("不甘") {
+            family = "resolve"
+        } else if context.contains("乐") || context.contains("樂") || context.contains("放下") || context.contains("鬆弛") {
+            family = "relief"
+        } else if context.contains("夜") || context.contains("孤") {
+            family = "quiet"
+        } else {
+            family = "default"
+        }
+
+        switch (family, form.meter) {
         case ("part", .five):
             table = fiveParting
+        case ("resolve", .five):
+            table = fiveResolve
         case ("quiet", .five):
             table = fiveQuiet
         case ("relief", .five):
@@ -4420,6 +4680,8 @@ enum PoetrySeed {
             table = fiveDefault
         case ("part", .seven):
             table = sevenParting
+        case ("resolve", .seven):
+            table = sevenResolve
         case ("quiet", .seven):
             table = sevenQuiet
         case ("relief", .seven):
@@ -4428,116 +4690,17 @@ enum PoetrySeed {
             table = sevenDefault
         }
 
-        return table[index % table.count]
-    }
-}
-
-// MARK: - Three-level mood selection data
-
-private enum MoodLevels {
-    private static var level2Rotation: [String: Int] = [:]
-    private static var level3Rotation: [String: Int] = [:]
-
-    /// Level 1: the four root emotions
-    static let level1 = ["喜", "怒", "哀", "乐"]
-
-    static func level2Label(for l1: String) -> String {
-        switch l1 {
-        case "喜":
-            return "何事可喜"
-        case "怒":
-            return "因何不平"
-        case "哀":
-            return "何事牽掛"
-        case "乐":
-            return "何事成樂"
-        default:
-            return "何事在心"
-        }
-    }
-
-    /// Level 2: each root branches into broad real-life situations.
-    static func level2(for l1: String) -> [String] {
-        level2Groups(for: l1).first ?? []
-    }
-
-    static func rotatingLevel2(for l1: String) -> [String] {
-        let groups = level2Groups(for: l1)
-        guard !groups.isEmpty else { return [] }
-        let nextIndex = ((level2Rotation[l1] ?? 0) + 1) % groups.count
-        level2Rotation[l1] = nextIndex
-        return groups[nextIndex]
-    }
-
-    private static func level2Groups(for l1: String) -> [[String]] {
-        switch l1 {
-        case "喜":
-            return [
-                ["得償所願", "久別重逢", "小有成就", "暗自歡喜", "喜從天降", "心願初成", "良人相伴", "春風得意"],
-                ["升職加薪", "考試過關", "新居初定", "旅途將啟", "朋友相聚", "家人安好", "被人記得", "驚喜忽至"]
-            ]
-        case "怒":
-            return [
-                ["事與願違", "被人辜負", "職場不平", "言語相傷", "等待太久", "受了委屈", "界線被犯", "反覆內耗"],
-                ["努力無果", "誤會難平", "失約失信", "不被看見", "世事荒唐", "心有不甘", "舊怨未消", "忍無可忍"]
-            ]
-        case "哀":
-            return [
-                ["久別難逢", "思念成疾", "舊夢重來", "孤身一人", "愛而不得", "故人漸遠", "前路未明", "夜深難眠"],
-                ["親友遠行", "離職告別", "城市陌生", "生日無人", "回憶太重", "錯過良辰", "心事無言", "人海失聯"]
-            ]
-        case "乐":
-            return [
-                ["工作順遂", "閒居有味", "愛情正好", "朋友相聚", "小事如願", "身心鬆弛", "旅途開闊", "雨過天晴"],
-                ["飯後散步", "週末無事", "新茶初沸", "日落可看", "貓狗相伴", "片刻自由", "家中有光", "清晨好夢"]
-            ]
-        default:
-            return [["心有所感", "舊事入懷", "今朝有念", "一時難言", "人間小事", "身心微動", "夢醒之後", "風過心頭"]]
-        }
-    }
-
-    /// Level 3: scene anchors, broad enough for work, life, love, city, and nature.
-    static func level3(for l1: String, _ l2: String) -> [String] {
-        level3Groups(for: l1, l2).first ?? []
-    }
-
-    static func rotatingLevel3(for l1: String, _ l2: String) -> [String] {
-        let key = "\(l1)-\(l2)"
-        let groups = level3Groups(for: l1, l2)
-        guard !groups.isEmpty else { return [] }
-        let nextIndex = ((level3Rotation[key] ?? 0) + 1) % groups.count
-        level3Rotation[key] = nextIndex
-        return groups[nextIndex]
-    }
-
-    private static func level3Groups(for l1: String, _ l2: String) -> [[String]] {
-        let shared = [
-            ["案前燈下", "通勤路上", "城市窗邊", "家中一隅", "人群之中", "雨後街口", "月照空庭", "山水之間"],
-            ["辦公室裏", "地鐵車廂", "晚風橋畔", "餐桌之前", "手機屏前", "旅店窗前", "舊巷深處", "清晨陽台"]
-        ]
-
-        if l2.contains("愛") || l2.contains("良人") || l2.contains("重逢") || l2.contains("朋友") {
-            return [
-                ["並肩路上", "晚飯桌前", "月下街口", "舊地門前", "人群之中", "車站燈下", "花影窗邊", "河畔長椅"],
-                ["相見途中", "長椅之側", "夜色街邊", "一盞燈前", "雨後街頭", "歸家路上", "影院門外", "橋邊風裏"]
-            ]
-        }
-
-        if l2.contains("工作") || l2.contains("職") || l2.contains("考") || l2.contains("升") || l2.contains("努力") {
-            return [
-                ["案前燈下", "會議室外", "電梯門前", "深夜工位", "通勤路上", "咖啡杯旁", "文件堆裏", "城市窗邊"],
-                ["屏幕之前", "地鐵車廂", "凌晨街口", "辦公室裏", "樓道風中", "工位桌前", "鍵盤聲旁", "工牌胸前"]
-            ]
-        }
-
-        if l2.contains("家") || l2.contains("親") || l2.contains("生日") || l2.contains("安好") {
-            return [
-                ["家中一隅", "飯桌燈下", "舊屋門前", "陽台風裏", "廚房煙火", "電話那端", "童年巷口", "歸途車上"],
-                ["窗簾之前", "客廳燈下", "樓下花影", "門鎖聲旁", "舊照之前", "被褥之間", "飯桌旁邊", "清晨屋內"]
-            ]
-        }
-
-        return shared
+        let rowIndex = ((index % table.count) + table.count) % table.count
+        let row = table[rowIndex]
+        let canonicalPrevious = selectedLines.last?.poemScript(.simplified)
+        let routeFromPrevious: Int? = {
+            guard rowIndex > 0, let canonicalPrevious else { return nil }
+            return table[rowIndex - 1].firstIndex { $0.poemScript(.simplified) == canonicalPrevious }
+        }()
+        let stableSeed = (mood.title + image.id).unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        let preferredRoute = routeFromPrevious ?? (stableSeed % row.count)
+        let start = (preferredRoute + refreshSeed) % row.count
+        return (0..<min(3, row.count)).map { row[(start + $0) % row.count] }
     }
 }
 

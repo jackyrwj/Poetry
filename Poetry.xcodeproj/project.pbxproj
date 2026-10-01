@@ -49,10 +49,8 @@
 		A21E34300F0DBA31CBC6D5C7 /* FZXiaoZhuanTi.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7B787452B0D5C00532F94190 /* FZXiaoZhuanTi.ttf */; };
 		A88E36F1F3922AA80E02DCF4 /* AutumnGathering.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB10B668A33283557A7E7384 /* AutumnGathering.swift */; };
 		B15D3CBF62A6D17DE550784E /* DappledShadowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52100786748C874758414C79 /* DappledShadowView.swift */; };
-		B5A95ED9D07DE734785ED137 /* AIConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */; };
 		BC7128819E3BF834D3DBE661 /* ClassicPoemTranslation-zh.json in Resources */ = {isa = PBXBuildFile; fileRef = FC1E8E23F7EFAC1C842EA2AC /* ClassicPoemTranslation-zh.json */; };
 		CAF2CA4FC85F92E73514EBE4 /* hermit_chinese_relaxing.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 07D0893607F085CF3923C9FC /* hermit_chinese_relaxing.m4a */; };
-		D48EDBAA8809DB7764E613A6 /* BailianPoetryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */; };
 		DACC8BCEB0639049B41FEE26 /* frontier_china_nature.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D80A0EEAE80EA90E4335FB41 /* frontier_china_nature.m4a */; };
 		DD1456093DEDFA8493BCAF70 /* ClassicPoemCommentary-en.json in Resources */ = {isa = PBXBuildFile; fileRef = D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */; };
 		E047F6C19AF7D85B55C7F0F2 /* WidgetGuide.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = EDD1000575753ABE63C577CB /* WidgetGuide.mp4 */; };
@@ -129,7 +127,6 @@
 		B910C12C2C2037D78814B9B1 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		B9EB26912ACF7BEA99284996 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		BAB740858662FCB67A80D03A /* DailyPoemPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPoemPicker.swift; sourceTree = "<group>"; };
-		C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = AIConfig.plist; sourceTree = "<group>"; };
 		C9C73057A8AA2B1B55459E97 /* ClassicPoemTitle-en.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ClassicPoemTitle-en.json"; sourceTree = "<group>"; };
 		CA6DB34609A19BC734151A64 /* DailyPoemWidgetSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyPoemWidgetSync.swift; sourceTree = "<group>"; };
 		CB10B668A33283557A7E7384 /* AutumnGathering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutumnGathering.swift; sourceTree = "<group>"; };
@@ -141,7 +138,6 @@
 		DBEC32E49B57E2DE40417879 /* PoetryDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetryDesignSystem.swift; sourceTree = "<group>"; };
 		DE7FFAB841B436C72770120A /* river_peaceful_morning.m4a */ = {isa = PBXFileReference; path = river_peaceful_morning.m4a; sourceTree = "<group>"; };
 		DE9B4B6B26B2F75D6D84D819 /* ClassicPoetryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicPoetryView.swift; sourceTree = "<group>"; };
-		DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BailianPoetryClient.swift; sourceTree = "<group>"; };
 		E9D0C31D37A622B5F5477405 /* PoetryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoetryApp.swift; sourceTree = "<group>"; };
 		EDD1000575753ABE63C577CB /* WidgetGuide.mp4 */ = {isa = PBXFileReference; path = WidgetGuide.mp4; sourceTree = "<group>"; };
 		EDFE78804E65EF01487BD243 /* autumn_ink_not_yet_dry.m4a */ = {isa = PBXFileReference; path = autumn_ink_not_yet_dry.m4a; sourceTree = "<group>"; };
@@ -215,11 +211,9 @@
 		5E128B596DA62053DA35ECF1 /* Poetry */ = {
 			isa = PBXGroup;
 			children = (
-				C7A6A37FC8F4CBAADDB4C1DA /* AIConfig.plist */,
 				5CAF8CDB41FB9084E68C5740 /* AppFeedback.swift */,
 				F62C30408E552A0B41C6FF95 /* Assets.xcassets */,
 				CB10B668A33283557A7E7384 /* AutumnGathering.swift */,
-				DEB7F8076820EA9AE2B143AB /* BailianPoetryClient.swift */,
 				FAC451B10B428A2F1989BC39 /* ClassicPoem.swift */,
 				D61E13EE610697334AACCF9D /* ClassicPoemCommentary-en.json */,
 				72259BE3C0EA9E773ED0E4FC /* ClassicPoemCommentary-zh.json */,
@@ -368,7 +362,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B5A95ED9D07DE734785ED137 /* AIConfig.plist in Resources */,
 				05C10F5EA88CBDA1ED174631 /* ATTRIBUTION.md in Resources */,
 				70C6C1E67BEB9EE0AE98C190 /* Assets.xcassets in Resources */,
 				DD1456093DEDFA8493BCAF70 /* ClassicPoemCommentary-en.json in Resources */,
@@ -415,7 +408,6 @@
 			files = (
 				9B8AC109A6DBAB19E23BCF91 /* AppFeedback.swift in Sources */,
 				A88E36F1F3922AA80E02DCF4 /* AutumnGathering.swift in Sources */,
-				D48EDBAA8809DB7764E613A6 /* BailianPoetryClient.swift in Sources */,
 				195BEC16D6D930F582E4C06E /* ClassicPoem.swift in Sources */,
 				577E4C177BB4F8FF570BC57E /* ClassicPoet.swift in Sources */,
 				3C2D989C46169C6ED8547542 /* ClassicPoetryView.swift in Sources */,
@@ -487,7 +479,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PoetryWidget/PoetryWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = PoetryWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -572,7 +564,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Poetry/Poetry.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -590,7 +582,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = PoetryWidget/PoetryWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = PoetryWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -612,7 +604,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Poetry/Poetry.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 9G5964XAXT;
 				INFOPLIST_FILE = Poetry/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

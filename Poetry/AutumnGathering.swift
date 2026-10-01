@@ -60,7 +60,7 @@ private struct WriteAutumnPoemKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Switches to AI写诗. Unset where there is no composer (English).
+    /// Switches to 擇句成詩. Unset where there is no composer (English).
     var writeAutumnPoem: (() -> Void)? {
         get { self[WriteAutumnPoemKey.self] }
         set { self[WriteAutumnPoemKey.self] = newValue }

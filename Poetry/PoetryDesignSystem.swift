@@ -11,44 +11,6 @@ private func compactInscriptionText(_ text: String) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-enum PremiumAccess {
-    private static let freeDailyLimit = 3
-    private static let usageDateKey = "freePoemUsageDate"
-    private static let usageCountKey = "freePoemUsageCount"
-    static var freeLimit: Int {
-        freeDailyLimit
-    }
-
-    static var usedToday: Int {
-        usageCountForToday()
-    }
-
-    static var freeRemaining: Int {
-        max(0, freeDailyLimit - usageCountForToday())
-    }
-
-    static func consumePoemIfNeeded(hasPremiumAccess: Bool) -> Bool {
-        guard !hasPremiumAccess else { return true }
-        let count = usageCountForToday()
-        guard count < freeDailyLimit else { return false }
-        UserDefaults.standard.set(todayKey, forKey: usageDateKey)
-        UserDefaults.standard.set(count + 1, forKey: usageCountKey)
-        return true
-    }
-
-    private static func usageCountForToday() -> Int {
-        guard UserDefaults.standard.string(forKey: usageDateKey) == todayKey else {
-            return 0
-        }
-        return UserDefaults.standard.integer(forKey: usageCountKey)
-    }
-
-    private static var todayKey: String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
-    }
-}
-
 struct PaywallView: View {
     private enum Plan {
         case monthly
@@ -68,7 +30,7 @@ struct PaywallView: View {
     private static var features: [String] {
         AppLanguage.isEnglish
             ? ["Every included poem", "Every included poet", "Premium typefaces", "White seal style", "Premium papers and backgrounds"]
-            : ["不限次數創作古詩", "全部已收錄詩詞", "全部已收錄詩人", "高級字體", "朱印樣式·白文", "會員紙面與背景"]
+            : ["全部已收錄詩詞", "全部已收錄詩人", "高級字體", "朱印樣式·白文", "會員紙面與背景"]
     }
 
     private func priceText(_ product: StoreProduct?) -> String {
@@ -91,7 +53,7 @@ struct PaywallView: View {
                             Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
                                 .font(typeface.titleFont)
                                 .foregroundStyle(Color.ink)
-                            Text(AppLanguage.copy("開通雅集，不限次數創作古詩，閱讀全部已收錄詩詞與詩人，解鎖更多創作樣式。", "Read every poem and meet every poet in the collection.").poemScript(script))
+                            Text(AppLanguage.copy("開通雅集，閱讀全部已收錄詩詞與詩人，解鎖更多創作樣式。", "Read every poem and meet every poet in the collection.").poemScript(script))
                                 .font(typeface.smallFont)
                                 .foregroundStyle(Color.mutedInk)
                         }
@@ -362,9 +324,6 @@ private struct PremiumStatusView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    if !AppLanguage.isEnglish {
-                        PremiumFeatureRow(icon: "infinity", text: "不限次數創作古詩")
-                    }
                     PremiumFeatureRow(icon: "book.closed", text: AppLanguage.copy("全部已收錄詩詞", "Every included poem"))
                     PremiumFeatureRow(icon: "person.text.rectangle", text: AppLanguage.copy("全部已收錄詩人", "Every included poet"))
                     PremiumFeatureRow(icon: "textformat", text: AppLanguage.copy("全部字體", "All typefaces"))
@@ -737,7 +696,7 @@ struct ProfileView: View {
                                         Text(AppLanguage.copy("雅集會員", "Pro").poemScript(script))
                                             .font(typeface.bodyFont)
                                             .foregroundStyle(Color.ink)
-                                        Text(AppLanguage.copy("不限次數創作古詩，解鎖全部已收錄詩詞與詩人、字體、朱印與紙面", "Unlock every included poem and poet, plus premium typefaces, seals, and papers.").poemScript(script))
+                                        Text(AppLanguage.copy("解鎖全部已收錄詩詞與詩人、字體、朱印與紙面", "Unlock every included poem and poet, plus premium typefaces, seals, and papers.").poemScript(script))
                                             .font(typeface.tinySealFont)
                                             .foregroundStyle(Color.mutedInk)
                                     }
@@ -750,7 +709,7 @@ struct ProfileView: View {
                                 .padding(.vertical, 14)
                                 .background {
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.white.opacity(0.6))
+                                        .fill(Color.white.opacity(0.84))
                                         .stroke(Color.cinnabar.opacity(0.2), lineWidth: 0.8)
                                 }
                             }
@@ -781,7 +740,7 @@ struct ProfileView: View {
                                 .padding(.vertical, 14)
                                 .background {
                                     RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.white.opacity(0.6))
+                                        .fill(Color.white.opacity(0.84))
                                         .stroke(Color.cinnabar.opacity(0.15), lineWidth: 0.8)
                                 }
                             }
@@ -810,6 +769,8 @@ struct ProfileView: View {
                                 showsLayoutPicker: false
                             ) { showsPaywall = true }
                         }
+                        .padding(18)
+                        .settingsModuleSurface()
 
                         VStack(alignment: .leading, spacing: 16) {
                             Text(AppLanguage.copy("個人朱印", "Personal seal").poemScript(script))
@@ -825,6 +786,8 @@ struct ProfileView: View {
                                 sealNameFocused: $sealNameFocused
                             ) { showsPaywall = true }
                         }
+                        .padding(18)
+                        .settingsModuleSurface()
 
                         Toggle(isOn: $showsInscriptionPlace) {
                             VStack(alignment: .leading, spacing: 4) {
@@ -837,6 +800,8 @@ struct ProfileView: View {
                             }
                         }
                         .tint(Color.cinnabar)
+                        .padding(18)
+                        .settingsModuleSurface()
 
                         aboutSection
 
@@ -920,6 +885,8 @@ struct ProfileView: View {
                 showsMusicCredits = true
             }
         }
+        .padding(18)
+        .settingsModuleSurface()
     }
 
     private var appVersionText: String {
@@ -930,7 +897,8 @@ struct ProfileView: View {
 
     private func normalizePreferences() {
         guard !hasPremiumAccess else { return }
-        if PoemBackground(rawValue: selectedBgRaw)?.isPremium == true {
+        if let background = PoemBackground(rawValue: selectedBgRaw),
+           !SeasonalAppearance.hasAccess(to: background, isPremium: hasPremiumAccess) {
             selectedBgRaw = PoemBackground.defaultBackground.rawValue
         }
         if PoemTypeface(rawValue: selectedTypefaceRaw)?.isFree == false {
@@ -938,6 +906,19 @@ struct ProfileView: View {
         }
         if SealStampStyle(rawValue: selectedSealStyleRaw)?.isFree == false {
             selectedSealStyleRaw = SealStampStyle.zhuwen.rawValue
+        }
+    }
+}
+
+private extension View {
+    /// Keeps settings readable when a reader has chosen a detailed paper or
+    /// background image. The shared surface also makes the top-level groups
+    /// scan like the cards used in the other tabs.
+    func settingsModuleSurface() -> some View {
+        background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.86))
+                .stroke(Color.mutedInk.opacity(0.16), lineWidth: 0.8)
         }
     }
 }
@@ -1117,13 +1098,13 @@ private enum LegalDocument: String, Identifiable {
                 return """
                 Welcome to Ink & Verse. By downloading, installing, or using the app, you agree to these terms.
 
-                Ink & Verse helps you create classical Chinese poetry. You choose imagery and select AI-generated candidate lines to shape a poem.
+                Ink & Verse helps you create classical Chinese poetry. You choose imagery and select from an offline, editor-curated line library to shape a poem.
 
-                You own the poems you create in the app and may use, share, or publish them. AI-generated lines may resemble other works, so we do not guarantee that a poem is unique.
+                You own the poems you create in the app and may use, share, or publish them. Curated candidate lines and their combinations may resemble other works, so we do not guarantee that a poem is unique.
 
                 Do not use the app to create unlawful content or content that infringes another person's rights. Do not reverse engineer, decompile, or disassemble the app.
 
-                The app relies on third-party AI services to generate candidate lines. Those services are provided as is, without express or implied warranties.
+                Candidate lines are selected and combined on your device. The app is provided as is, without express or implied warranties.
 
                 We may update these terms. Continued use after an update means you accept the revised terms.
 
@@ -1139,7 +1120,7 @@ private enum LegalDocument: String, Identifiable {
 
                 Your poems, preferences, and saved work are stored on your device. They are not uploaded to our servers.
 
-                To generate candidate lines or AI commentary, the app sends the relevant imagery, poem text, and author information to a third-party AI service. These requests do not include your name, location, or other direct identifiers.
+                Poem-composition choices and candidate-line matching are processed on your device and are not sent to an external content-generation service.
 
                 The app does not collect advertising identifiers and does not include advertising, analytics, or social-media SDKs. We do not sell personal information.
 
@@ -1155,13 +1136,13 @@ private enum LegalDocument: String, Identifiable {
             return """
             歡迎使用「詩客」。下載、安裝或使用本應用即表示你同意以下條款。
 
-            本應用是一款古典中文詩歌創作輔助工具，用戶通過選擇意境，借助 AI 技術生成候選詩句，逐句擇選完成詩歌創作。
+            本應用是一款古典中文詩歌創作輔助工具。用戶選擇意境後，應用從內置的人工編選詩句庫中匹配候選句，逐句擇選完成詩歌創作。
 
-            你通過本應用創作的詩歌作品歸你所有，可自由使用、分享和發佈。但 AI 輔助生成的詩句可能與其他用戶的創作存在相似之處，本應用不對內容的獨創性作出保證。
+            你通過本應用創作的詩歌作品歸你所有，可自由使用、分享和發佈。但內置候選句及其組合可能與其他作品相似，本應用不對內容的獨創性作出保證。
 
             使用本應用時，請勿生成違反法律法規或侵犯他人權益的內容，不得對本應用進行逆向工程、反編譯或反匯編。
 
-            本應用依賴第三方 AI 服務生成詩句內容，按「現狀」提供，不作任何明示或暗示的保證。
+            候選詩句的匹配與組合均在設備本地完成。本應用按「現狀」提供，不作任何明示或暗示的保證。
 
             我們可能會不時更新本協議。更新後繼續使用，即表示你接受更新內容。
 
@@ -1177,7 +1158,7 @@ private enum LegalDocument: String, Identifiable {
 
             你在應用內的所有創作數據均存儲在設備本地，不會上傳至任何伺服器。我們無法訪問你的創作內容。
 
-            為生成候選詩句，本應用會將你選擇的意境描述發送至第三方 AI 服務（阿里雲百煉／通義千問）。這些請求不包含你的姓名、位置或其他個人身份信息。
+            寫詩功能中的意境選擇、候選句匹配與詩作組合均在你的設備本地完成，不會發送至外部內容生成服務。
 
             本應用不會主動收集你的設備標識符或廣告標識符，不集成任何廣告、分析或社交媒體 SDK。我們不會出售你的個人信息。
 
@@ -1522,10 +1503,6 @@ private struct PoemArtworkWorkspace: View {
     @State private var showsPaperChoice = false
     /// Set from the paper choice sheet; acted on once that sheet is gone.
     @State private var opensPaywallAfterChoice = false
-    @State private var sharesWhenReady = false
-    /// A free paper chosen at share time for an archived work, whose saved
-    /// style otherwise can't change here.
-    @State private var sharePaperOverride: PoemBackground?
     @FocusState private var sealNameFocused: Bool
 
     let imageTitle: String
@@ -1570,25 +1547,20 @@ private struct PoemArtworkWorkspace: View {
 
     private var showsConfiguration: Bool { onSave != nil || initialStyle == nil }
 
-    /// A share draft may preview a premium paper (for instance a classic's own
-    /// paper); the paywall appears only when the reader actually shares it.
+    /// A poem may preview and keep a premium paper even for a free reader;
+    /// membership is checked only when the reader actually shares it.
     private var requiresPremiumToShare: Bool {
-        onSave == nil && style.background.isPremium && !store.isPremium
+        !SeasonalAppearance.hasAccess(to: style.background, isPremium: store.isPremium)
     }
 
     private var style: ShareArtworkStyle {
         // Sharing an archived work preserves its saved appearance.
-        if onSave == nil, let initialStyle {
-            guard let sharePaperOverride else { return initialStyle }
-            return initialStyle.replacingBackground(sharePaperOverride)
-        }
+        if onSave == nil, let initialStyle { return initialStyle }
         let background = PoemBackground(rawValue: selectedBgRaw) ?? .defaultBackground
         let font = PoemTypeface(rawValue: selectedTypefaceRaw) ?? .kaiti
         let seal = SealStampStyle(rawValue: selectedSealStyleRaw) ?? .zhuwen
-        // Only the editor clamps a locked paper; sharing gates it at the share button.
-        let clampsBackground = onSave != nil && background.isPremium && !store.isPremium
         return ShareArtworkStyle(
-            background: clampsBackground ? .defaultBackground : background,
+            background: background,
             typeface: !font.isFree && !store.isPremium ? .kaiti : font,
             script: PoemScript(rawValue: selectedScriptRaw) ?? .simplified,
             usesVerticalText: usesVerticalText,
@@ -1679,25 +1651,19 @@ private struct PoemArtworkWorkspace: View {
             if opensPaywallAfterChoice {
                 opensPaywallAfterChoice = false
                 showsPaywall = true
-            } else {
-                presentPendingShareIfReady()
             }
         }) {
             SharePaperChoiceSheet(
                 paper: style.background,
-                freePaper: freeSharePaper,
                 onUnlock: {
                     opensPaywallAfterChoice = true
                     showsPaperChoice = false
                 },
-                onShareWithFreePaper: {
-                    switchToFreePaper()
-                    sharesWhenReady = true
+                onChooseFreePaper: {
                     showsPaperChoice = false
                 }
             )
         }
-        .onChange(of: readyShareItem?.url) { _, _ in presentPendingShareIfReady() }
         .spotlightOverlay(for: [.selectBackground, .tapShareButton, .returnFromShare])
     }
 
@@ -1772,30 +1738,6 @@ private struct PoemArtworkWorkspace: View {
             }
         )
         .padding(.top, 4)
-    }
-
-    private var freeSharePaper: PoemBackground {
-        PoemBackground.freeImageBackgrounds.first ?? .defaultBackground
-    }
-
-    private func switchToFreePaper() {
-        let paper = freeSharePaper
-        if initialStyle != nil && onSave == nil {
-            sharePaperOverride = paper
-        } else {
-            withAnimation(.easeOut(duration: 0.25)) {
-                selectedBgRaw = paper.rawValue
-            }
-        }
-    }
-
-    /// Opens the share sheet for a free-paper share once the paper choice
-    /// sheet has closed and the new image has finished rendering.
-    private func presentPendingShareIfReady() {
-        guard sharesWhenReady, !showsPaperChoice, !requiresPremiumToShare,
-              let item = readyShareItem else { return }
-        sharesWhenReady = false
-        SharePresenter.present(controller: item.controller)
     }
 
     private var pagedIndex: Int {
@@ -2154,10 +2096,10 @@ private struct ArtworkPaperControls: View {
                     HStack(spacing: 14) {
 	                    // Background images
 	                    ForEach(PoemBackground.imageBackgrounds) { bg in
-	                        let isSpotlightTarget = participatesInGuide && spotlightGuide.step == .selectBackground && bg == PoemBackground.freeImageBackgrounds.first
-	                        let isActive = selectedBgRaw == bg.rawValue
+                        let isSpotlightTarget = participatesInGuide && spotlightGuide.step == .selectBackground && bg == PoemBackground.freeImageBackgrounds.first
+                        let isActive = selectedBgRaw == bg.rawValue
                         Button {
-                            guard hasPremiumAccess || !bg.isPremium else {
+                            guard SeasonalAppearance.hasAccess(to: bg, isPremium: hasPremiumAccess) else {
                                 requestPremium()
                                 return
                             }
@@ -2187,7 +2129,10 @@ private struct ArtworkPaperControls: View {
                                         )
                                         .frame(width: 52, height: 72)
 
-                                    if bg.isPremium {
+                                    if SeasonalAppearance.isSeasonallyFree(bg) {
+                                        SeasonalFreeBadge()
+                                            .offset(x: 5, y: 5)
+                                    } else if bg.isPremium {
                                         PremiumCrownBadge()
                                             .offset(x: 5, y: 5)
                                     }
@@ -2272,7 +2217,7 @@ private struct ArtworkPaperControls: View {
 
     private var isShadowSelected: Bool {
         let background = PoemBackground(rawValue: selectedBgRaw)
-        return background == .none || background == nil
+        return background == PoemBackground.none || background == nil
     }
 
     private var plainPaperButton: some View {
@@ -2365,14 +2310,13 @@ private struct MemberPaperTag: View {
 }
 
 /// Shown when a free reader shares on a member paper: unlock every paper, or
-/// share right away on a free one. Sharing itself is never locked.
+/// return to the picker to choose a free one. Sharing itself is never locked.
 private struct SharePaperChoiceSheet: View {
     @Environment(\.poemTypeface) private var typeface
     @Environment(\.poemScript) private var script
     let paper: PoemBackground
-    let freePaper: PoemBackground
     let onUnlock: () -> Void
-    let onShareWithFreePaper: () -> Void
+    let onChooseFreePaper: () -> Void
 
     var body: some View {
         VStack(spacing: 18) {
@@ -2385,8 +2329,8 @@ private struct SharePaperChoiceSheet: View {
                     .foregroundStyle(Color.ink)
                     .multilineTextAlignment(.center)
                 Text(AppLanguage.copy(
-                    "成為會員即可用全部紙張分享；也可以換成免費的「\(freePaper.displayName)」，現在就分享。",
-                    "Members can share on every paper. Or switch to the free \u{201C}\(freePaper.displayName)\u{201D} paper and share now."
+                    "成為會員即可用全部紙張分享；也可以選擇免費紙張後分享。",
+                    "Members can share on every paper. Or choose a free paper before sharing."
                 ).poemScript(script))
                     .font(typeface.smallFont)
                     .foregroundStyle(Color.mutedInk)
@@ -2409,10 +2353,10 @@ private struct SharePaperChoiceSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                Button(action: onShareWithFreePaper) {
+                Button(action: onChooseFreePaper) {
                     Text(AppLanguage.copy(
-                        "用「\(freePaper.displayName)」分享",
-                        "Share with \u{201C}\(freePaper.displayName)\u{201D}"
+                        "選擇免費紙張",
+                        "Choose a free paper"
                     ).poemScript(script))
                         .font(typeface.smallFont)
                         .foregroundStyle(Color.ink)
@@ -2443,6 +2387,17 @@ struct PremiumCrownBadge: View {
                     .stroke(Color.premiumGold.opacity(0.58), lineWidth: 0.7)
             }
             .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+    }
+}
+
+private struct SeasonalFreeBadge: View {
+    var body: some View {
+        Text(AppLanguage.copy("限免", "FREE"))
+            .font(.system(size: 8, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .frame(height: 18)
+            .background(Color.cinnabar.opacity(0.92), in: Capsule())
     }
 }
 

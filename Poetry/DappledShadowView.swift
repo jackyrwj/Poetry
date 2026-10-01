@@ -131,6 +131,10 @@ enum PoemBackground: String, CaseIterable, Identifiable {
     }
 
     static func suggested(for text: String) -> PoemBackground {
+        // Composition data can contain simplified and traditional Chinese at
+        // the same time. Match one canonical form so both variants choose the
+        // same paper.
+        let normalizedText = text.poemScript(.simplified)
         let matches: [(String, PoemBackground)] = [
             ("玉门", .frontier), ("楼兰", .frontier), ("关山", .frontier),
             ("边", .frontier), ("塞", .frontier), ("戍", .frontier), ("胡", .frontier),
@@ -142,8 +146,191 @@ enum PoemBackground: String, CaseIterable, Identifiable {
             ("舟", .boat), ("江", .boat), ("山", .peaks), ("桥", .bridge),
             ("亭", .pavilion), ("春", .spring), ("花", .spring)
         ]
-        return matches.first(where: { text.contains($0.0) })?.1 ?? defaultBackground
+        return matches.first(where: { normalizedText.contains($0.0) })?.1 ?? defaultBackground
     }
+}
+
+// MARK: - Seasonal limited-time access
+
+/// The app checks the current solar term whenever it becomes active, rather
+/// than relying on a background task. That makes a delayed launch or an offline
+/// device behave predictably, while keeping the calendar rule entirely on-device.
+enum SeasonalAppearance {
+    static let lastPresentedSeasonKey = "seasonalAppearanceLastPresentedSeason"
+    static let firstWelcomeRequiredKey = "seasonalAppearanceFirstWelcomeRequired"
+
+    /// A solar term starts at the instant when the Sun reaches its assigned
+    /// apparent ecliptic longitude, in 15° increments. This gives all 24
+    /// terms an actual local start time instead of assuming fixed calendar days.
+    enum SolarTerm: String, CaseIterable, Identifiable {
+        case xiaoHan, daHan, liChun, yuShui, jingZhe, chunFen
+        case qingMing, guYu, liXia, xiaoMan, mangZhong, xiaZhi
+        case xiaoShu, daShu, liQiu, chuShu, baiLu, qiuFen
+        case hanLu, shuangJiang, liDong, xiaoXue, daXue, dongZhi
+
+        var id: String { rawValue }
+
+        var longitude: Double {
+            switch self {
+            case .xiaoHan: 285; case .daHan: 300; case .liChun: 315; case .yuShui: 330
+            case .jingZhe: 345; case .chunFen: 0; case .qingMing: 15; case .guYu: 30
+            case .liXia: 45; case .xiaoMan: 60; case .mangZhong: 75; case .xiaZhi: 90
+            case .xiaoShu: 105; case .daShu: 120; case .liQiu: 135; case .chuShu: 150
+            case .baiLu: 165; case .qiuFen: 180; case .hanLu: 195; case .shuangJiang: 210
+            case .liDong: 225; case .xiaoXue: 240; case .daXue: 255; case .dongZhi: 270
+            }
+        }
+
+        var name: String {
+            switch self {
+            case .xiaoHan: AppLanguage.copy("小寒", "Minor Cold"); case .daHan: AppLanguage.copy("大寒", "Major Cold")
+            case .liChun: AppLanguage.copy("立春", "Beginning of Spring"); case .yuShui: AppLanguage.copy("雨水", "Rain Water")
+            case .jingZhe: AppLanguage.copy("惊蛰", "Awakening of Insects"); case .chunFen: AppLanguage.copy("春分", "Spring Equinox")
+            case .qingMing: AppLanguage.copy("清明", "Clear and Bright"); case .guYu: AppLanguage.copy("谷雨", "Grain Rain")
+            case .liXia: AppLanguage.copy("立夏", "Beginning of Summer"); case .xiaoMan: AppLanguage.copy("小满", "Grain Buds")
+            case .mangZhong: AppLanguage.copy("芒种", "Grain in Ear"); case .xiaZhi: AppLanguage.copy("夏至", "Summer Solstice")
+            case .xiaoShu: AppLanguage.copy("小暑", "Minor Heat"); case .daShu: AppLanguage.copy("大暑", "Major Heat")
+            case .liQiu: AppLanguage.copy("立秋", "Beginning of Autumn"); case .chuShu: AppLanguage.copy("处暑", "End of Heat")
+            case .baiLu: AppLanguage.copy("白露", "White Dew"); case .qiuFen: AppLanguage.copy("秋分", "Autumn Equinox")
+            case .hanLu: AppLanguage.copy("寒露", "Cold Dew"); case .shuangJiang: AppLanguage.copy("霜降", "Frost Descent")
+            case .liDong: AppLanguage.copy("立冬", "Beginning of Winter"); case .xiaoXue: AppLanguage.copy("小雪", "Minor Snow")
+            case .daXue: AppLanguage.copy("大雪", "Major Snow"); case .dongZhi: AppLanguage.copy("冬至", "Winter Solstice")
+            }
+        }
+
+        var background: PoemBackground {
+            switch self {
+            // The colorful scenes intentionally anchor the calendar, while
+            // quieter ink paintings give neighbouring terms room to breathe.
+            case .xiaoHan: .lamp
+            case .daHan: .snow
+            case .liChun, .chunFen: .spring
+            case .yuShui, .guYu: .rain
+            case .jingZhe: .rain
+            case .qingMing: .willow
+            case .liXia, .xiaoMan, .mangZhong, .xiaZhi: .lotus
+            case .xiaoShu: .bamboo
+            case .daShu: .frontier
+            case .liQiu, .chuShu, .qiuFen, .hanLu: .autumn
+            case .baiLu: .moon
+            case .shuangJiang: .plum
+            case .liDong: .lamp
+            case .xiaoXue, .daXue: .snow
+            case .dongZhi: .moon
+            }
+        }
+
+        var inscription: String {
+            switch self {
+            case .xiaoHan: "小寒连大吕，欢鹊垒新巢"
+            case .daHan: "大寒宜近火，无事莫开门"
+            case .liChun: "春风又绿江南岸"
+            case .yuShui: "随风潜入夜，润物细无声"
+            case .jingZhe: "微雨众卉新，一雷惊蛰始"
+            case .chunFen: "春分雨脚落声微"
+            case .qingMing: "清明时节雨纷纷"
+            case .guYu: "谷雨春光晓，山川黛色青"
+            case .liXia: "绿树阴浓夏日长"
+            case .xiaoMan: "夜莺啼绿柳，皓月醒长空"
+            case .mangZhong: "时雨及芒种，四野皆插秧"
+            case .xiaZhi: "昼晷已云极，宵漏自此长"
+            case .xiaoShu: "倏忽温风至，因循小暑来"
+            case .daShu: "大暑三秋近，林钟九夏移"
+            case .liQiu: "云天收夏色，木叶动秋声"
+            case .chuShu: "离离暑云散，袅袅凉风起"
+            case .baiLu: "白露暧秋色，月明清漏中"
+            case .qiuFen: "金气秋分，风清露冷"
+            case .hanLu: "袅袅凉风动，凄凄寒露零"
+            case .shuangJiang: "霜降水痕收，浅碧鳞鳞露远洲"
+            case .liDong: "立冬犹十日，衣亦未装绵"
+            case .xiaoXue: "小雪已晴芦叶暗，长波乍急鹤声嘶"
+            case .daXue: "大雪压青松，青松挺且直"
+            case .dongZhi: "冬至阳生春又来"
+            }
+        }
+
+        var detail: String {
+            AppLanguage.copy(
+                "「\(background.displayName)」已放入纸面库，本节气限时免费",
+                "\(background.displayName) is now in the paper library, free for this solar term"
+            )
+        }
+    }
+
+    static var current: SolarTerm {
+        solarTerm(for: Date())
+    }
+
+    static func solarTerm(for date: Date) -> SolarTerm {
+        let year = Calendar.current.component(.year, from: date)
+        let candidates = (year - 1...year + 1).flatMap { termYear in
+            SolarTerm.allCases.map { ($0, Self.date(for: $0, in: termYear)) }
+        }
+        return candidates
+            .filter { $0.1 <= date }
+            .max { $0.1 < $1.1 }?.0 ?? .dongZhi
+    }
+
+    /// Meeus/NOAA solar-longitude calculation, refined with Newton iteration.
+    /// It resolves the astronomical instant locally to within a few minutes,
+    /// rather than choosing one of the commonly copied fixed calendar dates.
+    static func date(for term: SolarTerm, in year: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let equinoxGuess = calendar.date(from: DateComponents(
+            calendar: calendar, timeZone: calendar.timeZone,
+            year: year, month: 3, day: 20, hour: 12
+        ))!
+        // Only 小寒 through 雨水 belong before this Gregorian year's March
+        // equinox. 秋冬 terms (195°–270°) belong after it, in the same year.
+        let signedOffset = term.longitude >= 285 ? term.longitude - 360 : term.longitude
+        var julianDay = julianDate(for: equinoxGuess) + signedOffset / 0.98564736
+
+        for _ in 0..<8 {
+            let error = signedAngle(solarApparentLongitude(at: julianDay) - term.longitude)
+            julianDay -= error / 0.98564736
+        }
+        return date(fromJulianDate: julianDay)
+    }
+
+    private static func julianDate(for date: Date) -> Double {
+        date.timeIntervalSince1970 / 86_400 + 2_440_587.5
+    }
+
+    private static func date(fromJulianDate julianDate: Double) -> Date {
+        Date(timeIntervalSince1970: (julianDate - 2_440_587.5) * 86_400)
+    }
+
+    private static func solarApparentLongitude(at julianDay: Double) -> Double {
+        let centuries = (julianDay - 2_451_545.0) / 36_525
+        let meanLongitude = 280.46646 + centuries * (36_000.76983 + 0.0003032 * centuries)
+        let meanAnomaly = 357.52911 + centuries * (35_999.05029 - 0.0001537 * centuries)
+        let anomaly = meanAnomaly * .pi / 180
+        let equationOfCenter = sin(anomaly) * (1.914602 - centuries * (0.004817 + 0.000014 * centuries))
+            + sin(2 * anomaly) * (0.019993 - 0.000101 * centuries)
+            + sin(3 * anomaly) * 0.000289
+        let omega = (125.04 - 1934.136 * centuries) * .pi / 180
+        return normalizedAngle(meanLongitude + equationOfCenter - 0.00569 - 0.00478 * sin(omega))
+    }
+
+    private static func normalizedAngle(_ angle: Double) -> Double {
+        let result = angle.truncatingRemainder(dividingBy: 360)
+        return result < 0 ? result + 360 : result
+    }
+
+    private static func signedAngle(_ angle: Double) -> Double {
+        let normalized = normalizedAngle(angle)
+        return normalized > 180 ? normalized - 360 : normalized
+    }
+
+    static func hasAccess(to background: PoemBackground, isPremium: Bool) -> Bool {
+        isPremium || !background.isPremium || background == current.background
+    }
+
+    static func isSeasonallyFree(_ background: PoemBackground) -> Bool {
+        background.isPremium && background == current.background
+    }
+
 }
 
 // MARK: - Main view
